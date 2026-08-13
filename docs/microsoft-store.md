@@ -75,7 +75,7 @@ data, no account needed. Not an official SJTU product.
 先构建含 sidecar 的 Tauri Release，再执行：
 
 ```powershell
-pwsh -File scripts/check-release-version.ps1
+node scripts/check-release-version.mjs
 pwsh -File packaging/build-msix.ps1 -Version 0.5.1.0 -CertificatePath .\store-signing.pfx -CertificatePassword '<password>'
 ```
 

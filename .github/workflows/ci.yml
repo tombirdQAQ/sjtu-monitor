@@ -14,8 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Windows 与 macOS 都跑:平台分支(DPAPI/Keychain、win11toast/osascript、venv 路径)
+  # 只有在各自平台上才会被真正执行到。
   python-checks:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +66,11 @@ jobs:
         run: npm run build
 
   rust-checks:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
     steps:
       - uses: actions/checkout@v4
 
@@ -73,6 +83,7 @@ jobs:
       # tauri-winres 需要 rc.exe; 在 PATH/注册表找不到时通过 RC 环境变量指定,
       # 按运行器实际安装的 Windows SDK 版本自动定位(不依赖固定版本号)。
       - name: Locate rc.exe
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           if (-not $env:RC) {
