@@ -16,7 +16,11 @@ concurrency:
 jobs:
   # Windows 与 macOS 都跑:平台分支(DPAPI/Keychain、win11toast/osascript、venv 路径)
   # 只有在各自平台上才会被真正执行到。
-  python-checks:
+  #
+  # 矩阵 job 的检查名会带上 `(windows-latest)` 这类后缀,而 main 的分支规则要求的是
+  # 不带后缀的 `python-checks`/`rust-checks`。下面各配一个同名汇总 job 承接该要求,
+  # 这样以后往矩阵里增删平台都不必再改仓库设置。
+  python-matrix:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -40,6 +44,18 @@ jobs:
       # 仅运行当前保留的 Python 离线单测文件。
       - name: Unit tests
         run: python -m unittest -v test_gui_logic.py test_gui_responsive.py
+
+  # 分支规则要求的固定检查名。if: always() 保证矩阵失败时它仍然运行并如实报错,
+  # 否则 job 会被跳过、必需检查永远拿不到结论。
+  python-checks:
+    needs: python-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify matrix result
+        run: |
+          echo "python-matrix: ${{ needs.python-matrix.result }}"
+          test "${{ needs.python-matrix.result }}" = "success"
 
   frontend-checks:
     runs-on: windows-latest
@@ -65,7 +81,7 @@ jobs:
       - name: Build
         run: npm run build
 
-  rust-checks:
+  rust-matrix:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -97,3 +113,13 @@ jobs:
 
       - name: Cargo tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+  rust-checks:
+    needs: rust-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify matrix result
+        run: |
+          echo "rust-matrix: ${{ needs.rust-matrix.result }}"
+          test "${{ needs.rust-matrix.result }}" = "success"
