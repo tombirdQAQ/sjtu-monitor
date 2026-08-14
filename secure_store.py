@@ -132,15 +132,41 @@ def _windows_set(name: str, value: str) -> None:
     tmp.replace(WINDOWS_SECRET_FILE)
 
 
+def parse_macos_password(stderr: str) -> str:
+    """从 `security find-generic-password -g` 的 stderr 里还原密码原文。
+
+    该行有两种形态,由 security 自行选择:
+        password: "plainpass123"                       —— 可打印 ASCII
+        password: 0xE5AF86...  "\\345\\257\\206abc"    —— 含非 ASCII 或引号/反斜杠
+    `0x` 前缀是二进制形式的明确标记,因此两者可以无歧义区分。
+    """
+    for line in stderr.splitlines():
+        if not line.startswith("password: "):
+            continue
+        value = line[len("password: "):].strip()
+        if value.startswith("0x"):
+            hex_digits = value[2:].split(None, 1)[0]
+            try:
+                return bytes.fromhex(hex_digits).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                return ""
+        if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+            return value[1:-1]
+        return value
+    return ""
+
+
 def _macos_get(name: str) -> str:
+    # 不用 `-w`:密码含非 ASCII 时它输出十六进制而非原文,且与字面量("6161" 这类)
+    # 无法区分,会把中文密码读成一串 hex。`-g` 的输出带 0x 标记,可以正确还原。
     result = subprocess.run(
-        ["security", "find-generic-password", "-s", SERVICE, "-a", name, "-w"],
+        ["security", "find-generic-password", "-s", SERVICE, "-a", name, "-g"],
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         check=False,
     )
-    return result.stdout.rstrip("\n") if result.returncode == 0 else ""
+    return parse_macos_password(result.stderr) if result.returncode == 0 else ""
 
 
 def _macos_set(name: str, value: str) -> None:

@@ -1,6 +1,7 @@
 requests>=2.31.0
 ddddocr>=1.5.5
 pillow>=10.0.0
-win11toast>=0.35
+# win11toast 依赖 winsdk，非 Windows 平台装不上；macOS 走 osascript、Linux 走 notify-send。
+win11toast>=0.35; sys_platform == "win32"
 python-dotenv>=1.0.0
 beautifulsoup4>=4.12.0

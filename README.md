@@ -7,13 +7,26 @@
 
 ## 环境要求
 
-- Python 3.10 或更高版本
-- Windows 10/11、macOS 或 Linux（Linux 桌面通知需要系统提供 `notify-send`）
+- Python 3.10 或更高版本（**macOS 需要 3.11+**，见下）
+- Windows 10/11、macOS 14+（Apple Silicon）或 Linux（Linux 桌面通知需要系统提供 `notify-send`）
 - Node.js 20 或更高版本（Tauri/React 前端）
 - Rust stable 工具链（Tauri 桌面壳）
+- macOS 还需 Xcode Command Line Tools（`xcode-select --install`）
 - 可正常访问交我办与 jAccount
 
+### 关于 macOS
+
+macOS 版**仅支持 Apple Silicon**。验证码识别依赖 `ddddocr` → `onnxruntime`，后者自 1.24
+起只发布 `macosx_14_0_arm64` wheel，Intel（x86_64）与 universal2 均已停止提供，因此
+Intel Mac 无法用同一套依赖构建。这也是 macOS 最低系统版本定为 14.0、Python 最低
+3.11 的原因。
+
+发布的 DMG **未做 Developer ID 签名与公证**，首次打开需右键点“打开”，或执行
+`xattr -dr com.apple.quarantine /Applications/SJTU-Monitor.app`。
+
 ## 安装
+
+Windows：
 
 ```powershell
 git clone https://github.com/tangmubai/sjtu-monitor.git
@@ -26,6 +39,20 @@ npm install
 
 Copy-Item .env.example .env
 notepad .env
+```
+
+macOS / Linux：
+
+```bash
+git clone https://github.com/tangmubai/sjtu-monitor.git
+cd sjtu-monitor
+
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+npm install
+
+cp .env.example .env
 ```
 
 `.env` 仍可用于首次导入旧配置。通过桌面设置页保存后，密码会迁移到系统安全存储；`.env` 中的敏感键会被移除。
@@ -195,6 +222,30 @@ npm run build
 ```
 
 `npm run tauri dev` 会启动本地桌面窗口。涉及 `i.sjtu.edu.cn` 或 `course.sjtu.plus` 的按钮仍会调用真实外部接口，开发或验证时不要擅自点击联网刷新。
+
+### 已知问题：macOS 26/27 测试版无法本地打包
+
+在 macOS 26/27 的**测试版**系统上（Apple 链接器 `ld-27037`、CLT 27.0.0.0），
+`npm run tauri build` 会失败，报错形如：
+
+```
+dlopen(libdarling_macro-….dylib): mis-aligned LINKEDIT string pool, fileOffset=0x002B98AC
+error[E0463]: can't find crate for `darling_macro`
+```
+
+链接器为部分 proc-macro crate 产出了结构损坏的动态库，rustc 无法加载。特征：
+
+- 对固定的 (crate, 编译配置) 组合**确定性复现**，同一偏移量；换配置则换成另一个 crate 出问题
+- `cargo build --release`（默认参数）可以正常完成；但 `tauri build` 用的 feature 组合
+  会重新链接 `tauri_macros` 等 crate，那一批必坏
+- `cargo` 不会察觉产物已损坏，重试前需先 `rm -f src-tauri/target/release/deps/lib*.dylib`
+
+已验证**无效**的绕过方式：`-j 1` 串行构建、`-C strip=none`、`-Wl,-ld_classic`
+经典链接器、`build-override` 降低 proc-macro 优化级别。
+
+**debug 构建不受影响**，`npm run tauri dev` / `python gui.py` 完全正常，日常开发无碍。
+需要产出安装包时请走 CI（Release 工作流的 `macos-15` 运行器为正式版系统，未观察到此问题），
+或在正式版 macOS 上构建。CI 中未加入任何绕过参数。
 
 ## 提示
 

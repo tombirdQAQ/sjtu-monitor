@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import apppaths
 import config
+import secure_store
 from gui_backend import (
     availability,
     course_summary,
@@ -164,6 +165,45 @@ class ReleaseInitializationTests(unittest.TestCase):
                 (root / "state.json").write_text("keep", "utf-8")
                 apppaths.prepare_release_data(root)
                 self.assertEqual((root / "state.json").read_text("utf-8"), "keep")
+
+
+class MacosKeychainParsingTests(unittest.TestCase):
+    """`security find-generic-password -g` 的 stderr 解析。
+
+    纯字符串解析,不调用 security,因此在 Windows CI 上也能跑。样本取自
+    macOS 26 上 security 的真实输出。
+    """
+
+    def parse(self, line: str) -> str:
+        return secure_store.parse_macos_password(
+            f"keychain: \"/Users/x/Library/Keychains/login.keychain-db\"\n{line}\n"
+        )
+
+    def test_printable_ascii_password_is_unquoted(self):
+        self.assertEqual(self.parse('password: "plainpass123"'), "plainpass123")
+
+    def test_non_ascii_password_is_decoded_from_hex(self):
+        # security 对非 ASCII 密码只给十六进制;直接读 -w 会得到一串 hex 而不是原文。
+        self.assertEqual(
+            self.parse('password: 0xE5AF86E7A081616263  "\\345\\257\\206\\347\\240\\201abc"'),
+            "密码abc",
+        )
+
+    def test_password_that_looks_like_hex_is_taken_literally(self):
+        # 字面量 "6161" 走引号分支,不能被当成 hex 解成 "aa"。
+        self.assertEqual(self.parse('password: "6161"'), "6161")
+
+    def test_quotes_and_backslashes_survive_hex_roundtrip(self):
+        self.assertEqual(
+            self.parse('password: 0x71756F2274655C616E64  "quo"te\\134and"'),
+            'quo"te\\and',
+        )
+
+    def test_missing_password_line_yields_empty_string(self):
+        self.assertEqual(secure_store.parse_macos_password("keychain: \"login\"\n"), "")
+
+    def test_undecodable_hex_yields_empty_string(self):
+        self.assertEqual(self.parse("password: 0xFF  \"\\377\""), "")
 
 
 if __name__ == "__main__":

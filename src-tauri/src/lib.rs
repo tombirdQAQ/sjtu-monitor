@@ -96,11 +96,18 @@ fn python_command(root: &Path) -> (String, Vec<String>) {
             return (value, Vec::new());
         }
     }
-    let local = root.join(".venv").join("Scripts").join("python.exe");
+    // venv 布局按平台不同:Windows 是 .venv\Scripts\python.exe,类 Unix 是 .venv/bin/python。
+    let local = if cfg!(windows) {
+        root.join(".venv").join("Scripts").join("python.exe")
+    } else {
+        root.join(".venv").join("bin").join("python")
+    };
     if local.exists() {
         return (local.to_string_lossy().to_string(), Vec::new());
     }
-    ("python".into(), Vec::new())
+    // macOS/Linux 上裸 `python` 常常不存在;Windows 上 `python3` 是应用商店垫片,不能用。
+    let fallback = if cfg!(windows) { "python" } else { "python3" };
+    (fallback.into(), Vec::new())
 }
 
 /// 打包后随应用一起分发的独立 Python 后端(PyInstaller onedir),文件名 sjtu-backend[.exe]。
