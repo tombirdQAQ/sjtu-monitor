@@ -37,3 +37,5 @@ src-tauri/resources/
 build/
 secrets.local.json
 /site
+*.DS_Store
+*.swp
