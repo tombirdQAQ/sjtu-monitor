@@ -676,7 +676,7 @@ function App() {
 
           {onboardingStep === 1 && (
             <div className="onboardingBody">
-              <div><h1>连接 JAccount</h1><p>凭据保存在 Windows DPAPI 安全存储中。本步骤不会发起网络请求。</p></div>
+              <div><h1>连接 JAccount</h1><p>凭据保存在系统安全存储（{settings.secret_backend || "未知"}）中。本步骤不会发起网络请求。</p></div>
               <div className="onboardingForm">
                 <Field label="JAccount" value={settings.jaccount_user} onChange={(value) => setSettings({ ...settings, jaccount_user: value })} />
                 <Field label="JAccount 密码" type="password" value={settings.jaccount_pass} placeholder={settings.has_jaccount_pass ? "已安全保存，留空不修改" : "请输入密码"} onChange={(value) => setSettings({ ...settings, jaccount_pass: value })} />

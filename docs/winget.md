@@ -59,7 +59,7 @@ https://dl.sj-tu.com/sjtu-monitor/v0.5.1/SJTU-Monitor_0.5.1_x64_zh-CN.msi
    $v.Execute(); $v.Fetch().StringData(1)
    ```
    注意 MSI 内部 `ProductVersion` 必须与文件名/URL 的版本一致，否则用户在
-   「已安装程序」里看到的版本会对不上（发布前先 `pwsh scripts/check-release-version.ps1`
+   「已安装程序」里看到的版本会对不上（发布前先 `node scripts/check-release-version.mjs`
    确保源码三处版本号已同步）。
 
 ### 推荐用 wingetcreate 自动完成（会让你下载外部工具）
