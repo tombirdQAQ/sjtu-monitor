@@ -6,11 +6,20 @@
     POST /api/auth/login 带该 token 提交 {email, password}。
   - 登录后是标准会话态,requests.Session 自动接管 cookie,无需手工解析。
   - 评分内嵌在 /api/course/{id} 里: rating.{count, avg, score, distribution}。
-  - 同课程代码可能对应多个老师/学期的班级(same_code_courses),需按老师名消歧。
+  - 列表项也直接带 rating,不必再逐个查详情。
+
+评分是**按老师**分开的(2026-09-16 实测): 同一课程代码下每位老师一条记录,
+CS0501 有 28 条、MARX1205 有 116 条。所以:
+  - 必须翻页取全 —— 只取第一页(旧实现 page_size=20)大概率根本没取到本班老师;
+  - 列表默认按评分从高到低,匹配不上就取第一条 = 拿了"分最高的那位老师"冒充,
+    表现就是"课程对、老师不对"(用户实测反馈的问题);
+  - main_teacher.code 就是教务的**教师工号**(如 10498 郭晓莉),与教务 jsxx 里的
+    "10498/郭晓莉/副研究员" 完全对得上 —— 按工号匹配比姓名可靠(可避免重名)。
 
 对外主要接口:
   login(session)                              → 登录,幂等
-  search_course_by_code(session, code)        → 按课程代码精确匹配候选列表
+  search_course_by_code(session, code)        → 按课程代码精确匹配的全部候选(自动翻页)
+  fetch_course_ratings(session, code)         → 按老师聚合的评分表(工号/姓名双索引)
   get_course_detail(session, course_id)       → 单课详情(含 rating)
   get_rating_by_code(session, code, teacher)  → 便捷入口,返回精简评分字典
 """
@@ -98,16 +107,81 @@ def login(session: requests.Session) -> None:
     log.info("course.sjtu.plus 登录成功")
 
 
-def search_course_by_code(session: requests.Session, code: str) -> list[dict]:
-    """按课程代码在课程列表接口里精确匹配(q 可能模糊匹配到课程名,需要过滤)。"""
-    r = session.get(
-        COURSE_LIST_URL,
-        params={"q": code, "page_size": 20},
-        timeout=10,
-    )
-    r.raise_for_status()
-    items = r.json().get("items", [])
-    return [item for item in items if item.get("code") == code]
+def search_course_by_code(
+    session: requests.Session, code: str, *,
+    page_size: int = 100, max_pages: int = 5,
+) -> list[dict]:
+    """按课程代码取回**全部**精确匹配的候选(q 是模糊搜索,要自己过滤 code)。
+
+    一位老师一条记录,热门通识课能有一百多条,必须翻页;只取一页会漏掉本班老师,
+    进而退化成"拿别人的评分冒充"。
+    """
+    items: list[dict] = []
+    seen: set[int] = set()
+    for page in range(1, max_pages + 1):
+        r = session.get(
+            COURSE_LIST_URL,
+            params={"q": code, "page": page, "page_size": page_size},
+            timeout=15,
+        )
+        r.raise_for_status()
+        payload = r.json()
+        rows = payload.get("items") or []
+        for item in rows:
+            if item.get("code") == code and item.get("id") not in seen:
+                seen.add(item.get("id"))
+                items.append(item)
+        total = payload.get("total")
+        if len(rows) < page_size or (isinstance(total, int) and page * page_size >= total):
+            break
+    return items
+
+
+def _entry(item: dict) -> dict:
+    teacher = item.get("main_teacher") or {}
+    return {
+        "course_id": item.get("id"),
+        "name": item.get("name"),
+        "teacher": teacher.get("name"),
+        "teacher_id": str(teacher.get("code") or "") or None,  # = 教务的教师工号
+        "semester": item.get("last_semester"),
+        "rating": item.get("rating"),
+    }
+
+
+def _entry_rank(entry: dict) -> tuple:
+    """同一位老师有多条(不同学期)时选哪条:学期新的优先,其次评价数多的。"""
+    rating = entry.get("rating") or {}
+    return (str(entry.get("semester") or ""), rating.get("count") or 0)
+
+
+def fetch_course_ratings(session: requests.Session, code: str, **search_kwargs) -> dict | None:
+    """把某课程代码下所有老师的评分整理成可按老师精确取用的结构。
+
+    返回 {code, name, teachers: {工号: entry}, by_name: {姓名: 工号或姓名},
+          entries: [...]};站上没有这门课时返回 None。
+    """
+    candidates = search_course_by_code(session, code, **search_kwargs)
+    if not candidates:
+        return None
+    entries = [_entry(item) for item in candidates]
+    teachers: dict[str, dict] = {}
+    by_name: dict[str, str] = {}
+    for entry in entries:
+        key = entry["teacher_id"] or entry["teacher"]
+        if not key:
+            continue
+        if key not in teachers or _entry_rank(entry) > _entry_rank(teachers[key]):
+            teachers[key] = entry
+        if entry["teacher"]:
+            by_name.setdefault(entry["teacher"], key)
+    return {
+        "code": code,
+        "name": next((e["name"] for e in entries if e.get("name")), None),
+        "teachers": teachers,
+        "by_name": by_name,
+        "entries": entries,
+    }
 
 
 def get_course_detail(session: requests.Session, course_id: int) -> dict:
@@ -116,34 +190,41 @@ def get_course_detail(session: requests.Session, course_id: int) -> dict:
     return r.json()
 
 
-def _to_rating_dict(entry: dict) -> dict:
-    return {
-        "code": entry.get("code"),
-        "teacher": (entry.get("main_teacher") or {}).get("name"),
-        "semester": entry.get("last_semester"),
-        "rating": entry.get("rating"),
+def get_rating_by_code(
+    session: requests.Session, code: str, teacher_name: str | None = None,
+    teacher_id: str | None = None,
+) -> dict | None:
+    """按课程代码查评分;给了老师(工号优先、姓名次之)就只返回该老师的那条。
+
+    找不到该老师时返回 None —— 宁可"没有",也不要把别的老师的评分安到这门班上。
+    """
+    table = fetch_course_ratings(session, code)
+    if not table:
+        return None
+    entry = lookup_teacher(table, teacher_id=teacher_id, teacher_name=teacher_name)
+    if entry:
+        return {"code": code, **{k: entry[k] for k in
+                                 ("teacher", "teacher_id", "semester", "rating")}}
+    if teacher_id or teacher_name:
+        return None
+    best = max(table["entries"], key=_entry_rank, default=None)
+    return None if best is None else {
+        "code": code, **{k: best[k] for k in
+                         ("teacher", "teacher_id", "semester", "rating")}
     }
 
 
-def get_rating_by_code(
-    session: requests.Session, code: str, teacher_name: str | None = None
-) -> dict | None:
-    """按课程代码查评分,可选按老师姓名消歧多个候选班级。"""
-    candidates = search_course_by_code(session, code)
-    if not candidates:
-        return None
-
+def lookup_teacher(table: dict, *, teacher_id: str | None = None,
+                   teacher_name: str | None = None) -> dict | None:
+    """在评分表里按工号(优先)或姓名找一位老师;都没命中返回 None。"""
+    teachers = table.get("teachers") or {}
+    if teacher_id and teacher_id in teachers:
+        return teachers[teacher_id]
     if teacher_name:
-        for c in candidates:
-            if (c.get("main_teacher") or {}).get("name") == teacher_name:
-                return _to_rating_dict(c)
-
-    if len(candidates) > 1:
-        candidates = sorted(
-            candidates, key=lambda c: c.get("last_semester") or "", reverse=True
-        )
-
-    return _to_rating_dict(candidates[0])
+        key = (table.get("by_name") or {}).get(teacher_name)
+        if key and key in teachers:
+            return teachers[key]
+    return None
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import type { CourseRow, PriorityGroup } from "./api";
+import type { ChosenCourse, CourseRow } from "./api";
 
 export type CourseSort = "catalog" | "name" | "rating";
 
@@ -230,40 +230,141 @@ function rawSchedule(course: CourseRow | undefined): string | null {
   return course.sksj || course.schedule.join("\n") || null;
 }
 
+/** 与 timetable.is_unscheduled 一致：空或占位符表示不排课，不占任何时段。 */
+export function isUnscheduled(schedule?: string | null): boolean {
+  return ["", "--", "不排教室", "待定"].includes(String(schedule ?? "").trim());
+}
+
+export interface ConflictMark {
+  status: "conflict" | "unknown";
+  /** 冲突的已选课程名称 */
+  with?: string;
+  detail?: string;
+}
+
+function chosenLabel(course: ChosenCourse): string {
+  return course.class_name ? `${course.title} - ${course.class_name}` : course.title;
+}
+
+/** 本组外、占用时段的已选课程(本组已选即将被换掉，不参与比较)。 */
+function chosenOutside(groupIds: Iterable<string>, choosed: ChosenCourse[]): ChosenCourse[] {
+  const ids = new Set(groupIds);
+  return choosed.filter((course) => !ids.has(course.jxb_id) && !isUnscheduled(course.sksj));
+}
+
+function markAgainst(schedule: string | null, others: ChosenCourse[]): ConflictMark | null {
+  let unknown = false;
+  for (const other of others) {
+    const verdict = scheduleConflict(schedule, other.sksj);
+    if (verdict === null) {
+      unknown = true;
+      continue;
+    }
+    if (verdict.conflict) return { status: "conflict", with: chosenLabel(other), detail: verdict.detail };
+  }
+  return unknown ? { status: "unknown" } : null;
+}
+
+/**
+ * 与 monitor.conflict_marks 同一规则：组内可能被选择的课程(优先级高于组内最高已选；
+ * 组内无已选则整组)若与本组外已选课程时间冲突或无法判断，按规则不会被选择。
+ */
+export function groupConflictMarks(
+  priority: string[],
+  courses: CourseRow[],
+  choosed: ChosenCourse[],
+): Map<string, ConflictMark> {
+  const chosenIds = new Set(choosed.map((course) => course.jxb_id));
+  const heldIndex = priority.findIndex((id) => chosenIds.has(id));
+  const candidates = heldIndex < 0 ? priority : priority.slice(0, heldIndex);
+  const others = chosenOutside(priority, choosed);
+  const courseById = new Map(courses.map((course) => [course.jxb_id, course]));
+  const marks = new Map<string, ConflictMark>();
+  if (others.length === 0) return marks;
+  for (const id of candidates) {
+    const mark = markAgainst(rawSchedule(courseById.get(id)), others);
+    if (mark) marks.set(id, mark);
+  }
+  return marks;
+}
+
 export function conflictWarning(
   addedIds: string[],
-  targetGroup: string,
-  groups: PriorityGroup[],
+  targetPriority: string[],
   courses: CourseRow[],
+  choosed: ChosenCourse[],
 ): string | null {
   const courseById = new Map(courses.map((course) => [course.jxb_id, course]));
+  const chosenIds = new Set(choosed.map((course) => course.jxb_id));
+  const others = chosenOutside([...targetPriority, ...addedIds], choosed);
   const conflicts: string[] = [];
   const unknowns: string[] = [];
-  const seenPairs = new Set<string>();
   for (const addedId of addedIds) {
+    if (chosenIds.has(addedId)) continue;
     const added = courseById.get(addedId);
-    for (const group of groups) {
-      if (group.name === targetGroup) continue;
-      for (const otherId of group.priority) {
-        if (otherId === addedId) continue;
-        const pair = [addedId, otherId].sort().join("\0");
-        if (seenPairs.has(pair)) continue;
-        seenPairs.add(pair);
-        const other = courseById.get(otherId);
-        const verdict = scheduleConflict(rawSchedule(added), rawSchedule(other));
-        const pairLabel = `${added?.title || addedId} 与“${group.name}”组的 ${other?.title || otherId}`;
-        if (verdict === null) unknowns.push(pairLabel);
-        else if (verdict.conflict) conflicts.push(`${pairLabel}　${verdict.detail}`);
-      }
-    }
+    const mark = markAgainst(rawSchedule(added), others);
+    const title = added?.title || addedId;
+    if (mark?.status === "conflict") conflicts.push(`${title} 与已选 ${mark.with}　${mark.detail}`);
+    else if (mark?.status === "unknown") unknowns.push(title);
   }
   if (conflicts.length === 0 && unknowns.length === 0) return null;
   return [
     ...(conflicts.length > 0
-      ? ["确定存在时间冲突：", ...conflicts.map((line) => `　${line}`)]
+      ? ["与本组外已选课程时间冲突，按规则不会被选择：", ...conflicts.map((line) => `　${line}`)]
       : []),
     ...(unknowns.length > 0
-      ? ["以下缺少时间数据，无法判断是否冲突：", ...unknowns.map((line) => `　${line}`)]
+      ? ["缺少时间数据，无法判断是否冲突，按规则不会被选择：", ...unknowns.map((line) => `　${line}`)]
       : []),
+    "已加入方案，可继续保存。",
   ].join("\n");
 }
+
+/** bootstrap.py 输出的结构化结果行(bootstrap.RESULT_PREFIX)。 */
+export const BOOTSTRAP_RESULT_PREFIX = "[bootstrap-result] ";
+
+export interface BootstrapResult {
+  ok: boolean;
+  action?: string;
+  reason?: "term_mismatch" | "closed" | "empty" | "login" | "network" | "error" | string;
+  message?: string;
+  site_term?: unknown;
+}
+
+export function parseBootstrapResult(line: string): BootstrapResult | null {
+  const index = line.indexOf(BOOTSTRAP_RESULT_PREFIX);
+  if (index < 0) return null;
+  try {
+    const value = JSON.parse(line.slice(index + BOOTSTRAP_RESULT_PREFIX.length));
+    return value && typeof value === "object" && typeof value.ok === "boolean" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+const bootstrapFailureTitles: Record<string, string> = {
+  term_mismatch: "学期与教务网站不一致",
+  closed: "教务网站选课未开放",
+  empty: "没有获取到课程",
+  login: "登录失败",
+  session: "登录会话被顶掉",
+  network: "无法连接教务网站",
+};
+
+/** 抓取进程非 0 退出时的提示；没有结构化结果时给出通用说明。 */
+export function bootstrapFailureNotice(
+  result: BootstrapResult | null,
+  code: number | null | undefined,
+  action = "获取全量课程",
+): { title: string; message: string } {
+  if (result && !result.ok) {
+    return {
+      title: bootstrapFailureTitles[result.reason || ""] || `${action}失败`,
+      message: result.message || `${action}失败，请查看日志页。`,
+    };
+  }
+  return {
+    title: `${action}失败`,
+    message: `进程异常退出（exit=${code ?? "-"}）。可能不在选课期间、所选学期与教务网站不一致，或教务网站暂时不可达，请查看日志页了解详情。`,
+  };
+}
+

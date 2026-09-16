@@ -1,0 +1,24 @@
+# 统一换行符：仓库内与各平台工作区一律使用 LF，避免 Windows/macOS 间出现整文件换行符差异。
+* text=auto eol=lf
+
+# Windows 脚本保持 CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制资源
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.onnx binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.msix binary

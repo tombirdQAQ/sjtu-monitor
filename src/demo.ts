@@ -328,6 +328,35 @@ export const demoSnapshot: Snapshot = {
       open: false,
     },
   ],
+  terms: [{
+    key: "2026-3",
+    xkxnm: "2026",
+    xkxqm: "3",
+    label: "2026-2027 第1学期（秋）",
+    active: true,
+    group_count: 2,
+    catalog_fetched_at: "2026-07-20 09:00:00",
+    is_site_term: true,
+  }],
+  active_term: "2026-3",
+  site_term: {
+    key: "2026-3",
+    label: "2026-2027 第1学期（秋）",
+    zzxk_open: true,
+    tjxkbkk_open: true,
+    detected_at: "2026-07-20 09:00:00",
+    matches_active: true,
+  },
+  choosed: courses
+    .filter((course) => course.chosen)
+    .map((course) => ({
+      jxb_id: course.jxb_id,
+      title: course.title,
+      class_name: course.class_name,
+      sksj: course.sksj,
+      group: course.group,
+    })),
+  choosed_at: "2026-07-20 09:15:00",
   swap_state: {
     completed: ["DEMO-EN-02"],
     fatal: [],

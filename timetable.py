@@ -69,6 +69,16 @@ def _expand_weeks(spec: str) -> set[int]:
     return out
 
 
+def is_unscheduled(sksj: str | None) -> bool:
+    """sksj 为空或占位符(不排课/待定)——这门课不占任何时段。
+
+    与"无法解析"不同:非空但解析失败的文本仍应视为无法判断。
+    """
+    if sksj is None:
+        return True
+    return html.unescape(str(sksj)).strip() in _PLACEHOLDER_VALUES
+
+
 def parse_sksj(sksj: str | None) -> frozenset[tuple[int, int, int]]:
     """解析上课时间字符串为 {(星期, 周次, 节次), ...} 三元组集合。
 

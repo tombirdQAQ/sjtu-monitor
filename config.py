@@ -1,11 +1,18 @@
 """配置:从 .env 读取凭据,固定参数从 HAR 提取。"""
 import json
 import os
+import re
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 import apppaths
 import secure_store
+
+# 跨卷安全的“写 .tmp 再替换”,供 monitor/bootstrap/zzxk 等经 config 复用
+# (避免各模块再单独 import apppaths)。见 apppaths.replace_atomic。
+replace_atomic = apppaths.replace_atomic
 
 ROOT = Path(__file__).resolve().parent
 # 运行期可写数据目录:源码运行/测试时 == ROOT(行为不变);打包成独立程序后
@@ -101,25 +108,65 @@ _DEFAULT_PRIORITY_GROUPS: dict[str, dict] = {}
 
 # === 用户设置(user_settings.json)===
 # 所有"因人而异 / 运行期可改"的配置统一放在这一个 JSON 文件里,按分区组织:
-#   term            选课学年 xkxnm / 学期 xkxqm
+#   term            当前学期(选课学年 xkxnm / 学期 xkxqm):监控、换课、抓取目录都用它
+#   terms           按学期保存的配置 {"<xkxnm>-<xkxqm>": {courses, priority_groups}}
+#                     courses         监控哪些课(即 KCH_QUERIES,整体覆盖)
+#                     priority_groups 优先级组(GUI"课程方案"页编辑,整体覆盖)
+#   site_term       最近一次从教务网站读到的选课学期与模块开放状态(bootstrap 写入)
 #   query_overrides 查询接口的个人参数覆盖(如 zyh_id、njdm_id),display/pe 分开
-#   courses         监控哪些课(即 KCH_QUERIES,整体覆盖)
 #   auto_swap       自动换课开关 {enabled, dry_run}
-#   priority_groups 优先级组(GUI"选课设置"页编辑,整体覆盖)
 # 文件里只需写想覆盖的分区,缺省自动回落到代码内置默认值。
+# 旧版把 courses/priority_groups 放在顶层,加载时自动归入当前学期。
 USER_SETTINGS_FILE = DATA_DIR / "user_settings.json"
 # 旧版单独存优先级组的文件,存在且新文件缺失时自动迁移读取
 _LEGACY_PRIORITY_FILE = DATA_DIR / "priority_groups.json"
 
+# 按学期分区的配置键,以及按学期分目录保存的状态文件(不同学期的 jxb_id/已选/快照不得混用)。
+TERM_SCOPED_KEYS = ("courses", "priority_groups")
+TERM_STATE_FILES = (
+    "state.json", "swap_state.json", "catalog.json", "zzxk_capacity.json", "seat_details.json",
+)
+TERMS_DIR = DATA_DIR / "terms"
+
+# 每学年三个学期:第1学期(秋)、第2学期(春)、第3学期(夏)。
+# 学期代码 xkxqm:3 已联网验证 = 第1学期;12/16 为正方系统通用编码,尚未联网验证,
+# 优先使用教务网站读到的 site_term。
+TERM_SEMESTER_CODES = {"3": "1", "12": "2", "16": "3"}
+_SEMESTER_SEASONS = {"1": "秋", "2": "春", "3": "夏"}
+
 _DEFAULT_SETTINGS = {
     "term": {"xkxnm": "2026", "xkxqm": "3"},
+    "terms": {},
+    "site_term": {},
     "query_overrides": {"display": {}, "pe": {}},
-    "courses": _DEFAULT_KCH_QUERIES,
     "auto_swap": {"enabled": False, "dry_run": False},
     "notifications": {"email_enabled": True},
     "onboarding": {"completed": False},
-    "priority_groups": _DEFAULT_PRIORITY_GROUPS,
 }
+
+
+def term_key(xkxnm, xkxqm) -> str:
+    return f"{xkxnm}-{xkxqm}"
+
+
+def term_dir(key: str) -> Path:
+    return TERMS_DIR / key
+
+
+def term_label(xkxnm, xkxqm, site_term: dict | None = None) -> str:
+    """学期显示名。教务网站读到的名称(xkxnmc/xkxqmc)优先,否则按学期代码推断。"""
+    xkxnm, xkxqm = str(xkxnm), str(xkxqm)
+    site = site_term or {}
+    if str(site.get("xkxnm")) == xkxnm and str(site.get("xkxqm")) == xkxqm and site.get("xkxqmc"):
+        years = site.get("xkxnmc") or xkxnm
+        semester = str(site["xkxqmc"])
+    else:
+        years = f"{xkxnm}-{int(xkxnm) + 1}" if xkxnm.isdigit() else xkxnm
+        semester = TERM_SEMESTER_CODES.get(xkxqm)
+        if semester is None:
+            return f"{years} 学期代码{xkxqm}"
+    season = _SEMESTER_SEASONS.get(semester)
+    return f"{years} 第{semester}学期" + (f"（{season}）" if season else "")
 
 
 def _deep_copy(value):
@@ -138,6 +185,13 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 def default_settings() -> dict:
     return _deep_copy(_DEFAULT_SETTINGS)
+
+
+def default_term_settings() -> dict:
+    return {
+        "courses": _deep_copy(_DEFAULT_KCH_QUERIES),
+        "priority_groups": _deep_copy(_DEFAULT_PRIORITY_GROUPS),
+    }
 
 
 def default_priority_groups() -> dict[str, dict]:
@@ -166,52 +220,147 @@ def load_user_settings() -> dict:
     for key in ("term", "query_overrides", "auto_swap", "notifications", "onboarding"):
         if isinstance(data.get(key), dict):
             settings[key] = _deep_merge(settings[key], data[key])
-    # 整体替换分区:用户删掉的课/组不应被默认值"复活"。
-    # 显式写了该分区(即使是空 dict)就以文件为准;只有缺失/类型错误才回落默认。
-    for key in ("courses", "priority_groups"):
-        if isinstance(data.get(key), dict):
-            settings[key] = data[key]
+    if isinstance(data.get("site_term"), dict):
+        settings["site_term"] = data["site_term"]
+    terms = data.get("terms") if isinstance(data.get("terms"), dict) else {}
+    settings["terms"] = {
+        str(key): value for key, value in terms.items() if isinstance(value, dict)
+    }
+    # 旧版单学期配置(顶层 courses/priority_groups)归入当前学期,已有同名学期分区时以分区为准。
+    legacy = {key: data[key] for key in TERM_SCOPED_KEYS if isinstance(data.get(key), dict)}
+    active = term_key(settings["term"]["xkxnm"], settings["term"]["xkxqm"])
+    if legacy and active not in settings["terms"]:
+        settings["terms"][active] = legacy
     return settings
 
 
+def term_settings(settings: dict, key: str) -> dict:
+    """某学期的 courses/priority_groups。
+
+    整体替换分区:用户删掉的课/组不应被默认值"复活"。
+    显式写了该分区(即使是空 dict)就以文件为准;只有缺失/类型错误才回落默认。
+    """
+    entry = settings.get("terms", {}).get(key, {})
+    out = default_term_settings()
+    for name in TERM_SCOPED_KEYS:
+        if isinstance(entry.get(name), dict):
+            out[name] = entry[name]
+    return out
+
+
 def load_priority_groups() -> dict[str, dict]:
-    """重读用户设置里的优先级组(GUI"重新载入"用)。"""
-    return load_user_settings()["priority_groups"]
+    """重读用户设置里当前学期的优先级组(GUI"重新载入"用)。"""
+    settings = load_user_settings()
+    key = term_key(settings["term"]["xkxnm"], settings["term"]["xkxqm"])
+    return term_settings(settings, key)["priority_groups"]
 
 
 def save_user_settings(settings: dict) -> None:
     tmp = USER_SETTINGS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(settings, ensure_ascii=False, indent=2), "utf-8")
-    tmp.replace(USER_SETTINGS_FILE)
+    replace_atomic(tmp, USER_SETTINGS_FILE)
 
 
 def update_user_settings(**sections) -> None:
     """更新并保存指定分区,同时同步模块级变量(对本进程立即生效)。
 
     例: update_user_settings(priority_groups={...}, auto_swap={"enabled": True, "dry_run": True})
+    courses/priority_groups 写入当前学期分区;切换学期请用 set_active_term。
     """
     for key, value in sections.items():
-        USER_SETTINGS[key] = value
+        if key in TERM_SCOPED_KEYS:
+            USER_SETTINGS["terms"].setdefault(ACTIVE_TERM, {})[key] = value
+        else:
+            USER_SETTINGS[key] = value
     save_user_settings(USER_SETTINGS)
     _apply_settings(USER_SETTINGS)
 
 
+def set_active_term(xkxnm, xkxqm) -> str:
+    """切换当前学期(不存在则新建空分区),返回学期键。运行中的监控进程需重启才会生效。"""
+    xkxnm, xkxqm = str(xkxnm).strip(), str(xkxqm).strip()
+    if not re.fullmatch(r"\d{4}", xkxnm):
+        raise ValueError(f"学年格式错误: {xkxnm!r}(应为 4 位年份,如 2026)")
+    if not re.fullmatch(r"\d{1,2}", xkxqm):
+        raise ValueError(f"学期代码格式错误: {xkxqm!r}")
+    key = term_key(xkxnm, xkxqm)
+    USER_SETTINGS["term"] = {**USER_SETTINGS["term"], "xkxnm": xkxnm, "xkxqm": xkxqm}
+    USER_SETTINGS["terms"].setdefault(key, default_term_settings())
+    save_user_settings(USER_SETTINGS)
+    _apply_settings(USER_SETTINGS)
+    return key
+
+
+def known_terms() -> list[str]:
+    """已有配置或状态目录的学期键,加上当前学期,按学年/学期代码倒序。"""
+    keys = set(USER_SETTINGS["terms"]) | {ACTIVE_TERM}
+    if TERMS_DIR.is_dir():
+        keys.update(p.name for p in TERMS_DIR.iterdir() if p.is_dir())
+
+    def sort_key(key: str):
+        year, _, code = key.partition("-")
+        return (int(year) if year.isdigit() else 0, int(code) if code.isdigit() else 0)
+
+    return sorted(keys, key=sort_key, reverse=True)
+
+
+def _migrate_legacy_term_files(settings: dict) -> None:
+    """旧版状态文件放在数据根目录。首次按学期保存时复制到当前学期目录,原文件保留不动。"""
+    if TERMS_DIR.exists():
+        return
+    legacy = [DATA_DIR / name for name in TERM_STATE_FILES if (DATA_DIR / name).is_file()]
+    if not legacy:
+        return
+    target = term_dir(term_key(settings["term"]["xkxnm"], settings["term"]["xkxqm"]))
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        for src in legacy:
+            shutil.copy2(src, target / src.name)
+    except OSError:
+        pass
+
+
 def _apply_settings(settings: dict) -> None:
-    global XKXNM, XKXQM, QUERY_OVERRIDES, KCH_QUERIES
-    global PRIORITY_GROUPS, AUTO_SWAP, AUTO_SWAP_DRY_RUN
+    global XKXNM, XKXQM, ACTIVE_TERM, TERM_DIR, QUERY_OVERRIDES, KCH_QUERIES
+    global PRIORITY_GROUPS, AUTO_SWAP, AUTO_SWAP_DRY_RUN, SITE_TERM
     global EMAIL_ENABLED
+    global STATE_FILE, SWAP_STATE_FILE, CATALOG_FILE, ZZXK_CAPACITY_FILE, SEAT_DETAILS_FILE
     XKXNM = settings["term"]["xkxnm"]
     XKXQM = settings["term"]["xkxqm"]
+    ACTIVE_TERM = term_key(XKXNM, XKXQM)
+    current = term_settings(settings, ACTIVE_TERM)
     QUERY_OVERRIDES = settings["query_overrides"]
-    KCH_QUERIES = settings["courses"]
-    PRIORITY_GROUPS = settings["priority_groups"]
+    KCH_QUERIES = current["courses"]
+    PRIORITY_GROUPS = current["priority_groups"]
+    SITE_TERM = settings.get("site_term") or {}
     AUTO_SWAP = bool(settings["auto_swap"]["enabled"])
     AUTO_SWAP_DRY_RUN = bool(settings["auto_swap"]["dry_run"])
     EMAIL_ENABLED = bool(settings["notifications"]["email_enabled"])
+    # 按学期分目录的状态文件:切换学期后读写的都是该学期自己的文件。
+    TERM_DIR = term_dir(ACTIVE_TERM)
+    try:
+        TERM_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    STATE_FILE = TERM_DIR / "state.json"
+    SWAP_STATE_FILE = TERM_DIR / "swap_state.json"
+    # bootstrap.py 抓取的课程目录(全部可选课程+教学班+当前已选),GUI"课程方案"页读取
+    CATALOG_FILE = TERM_DIR / "catalog.json"
+    # zzxkyzb 监控用的教学班容量缓存(容量基本不变,PartDisplay 不返回,JxbWithKch 查一次后缓存)
+    ZZXK_CAPACITY_FILE = TERM_DIR / "zzxk_capacity.json"
+    SEAT_DETAILS_FILE = TERM_DIR / "seat_details.json"
 
 
 USER_SETTINGS = load_user_settings()
+_migrate_legacy_term_files(USER_SETTINGS)
 _apply_settings(USER_SETTINGS)
+
+
+def record_site_term(site_term: dict) -> None:
+    """保存最近一次从教务网站读到的选课学期与模块开放状态。"""
+    update_user_settings(site_term={
+        **site_term, "detected_at": datetime.now().isoformat(timespec="seconds"),
+    })
 
 
 def initial_held() -> dict[str, str]:
@@ -288,15 +437,10 @@ JACCOUNT_ENTRY_URL = "https://i.sjtu.edu.cn/jaccountlogin"
 JACCOUNT_CAPTCHA_URL = "https://jaccount.sjtu.edu.cn/jaccount/captcha"
 JACCOUNT_ULOGIN_URL = "https://jaccount.sjtu.edu.cn/jaccount/ulogin"
 
-STATE_FILE = DATA_DIR / "state.json"
+# STATE_FILE / SWAP_STATE_FILE / CATALOG_FILE / ZZXK_CAPACITY_FILE / SEAT_DETAILS_FILE
+# 按学期分目录,由 _apply_settings 设置(见上方)。以下文件跨学期共用。
 LOG_FILE = DATA_DIR / "changes.log"
 CAPTCHA_DEBUG_DIR = DATA_DIR / "captcha_debug"
-SWAP_STATE_FILE = DATA_DIR / "swap_state.json"
-# bootstrap.py 抓取的课程目录(全部可选课程+教学班+当前已选),GUI"选课设置"页读取
-CATALOG_FILE = DATA_DIR / "catalog.json"
-# zzxkyzb 监控用的教学班容量缓存(容量基本不变,PartDisplay 不返回,JxbWithKch 查一次后缓存)
-ZZXK_CAPACITY_FILE = DATA_DIR / "zzxk_capacity.json"
-SEAT_DETAILS_FILE = DATA_DIR / "seat_details.json"
 # course.sjtu.plus 评分缓存(按 kch 键存,GUI"选课设置"页展示用)
 RATINGS_FILE = DATA_DIR / "ratings.json"
 
@@ -374,7 +518,7 @@ def save_env_settings(values: dict[str, str], path: Path | None = None) -> None:
     output.extend(f"{key}={_quote_env_value(value)}" for key, value in pending.items())
     tmp = env_path.with_suffix(env_path.suffix + ".tmp")
     tmp.write_text("\n".join(output) + "\n", "utf-8")
-    tmp.replace(env_path)
+    replace_atomic(tmp, env_path)
 
     for key, value in values.items():
         if key in SECRET_ENV_KEYS and not value:

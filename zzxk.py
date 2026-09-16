@@ -2,7 +2,10 @@
 
 由 2026-07-06 联网实测提炼:
   - 首页页签令牌(xkkz_id + 256 位 xkkz_xh)随首页一次抓取即有效;
-  - kspage/jspage 为页号范围,递增翻页,空窗口 = 该分类翻完;
+  - kspage/jspage 是**课程序号**范围(不是行号):kspage=1&jspage=10 返回前 10 门课的
+    全部教学班,行数因每门课班数不同而不等;空窗口 = 该分类翻完(越界实测回 0 行);
+    单窗口可以开得很大(实测 jspage=300/1000 一次返回 286 门课 546 行,与逐窗口累计
+    完全一致,不丢数据),所以宁可少发几个大请求 —— 见 _WINDOW_COURSES;
   - PartDisplay 每行 = 一个教学班,含 yxzrs(已选人数),无容量;
   - JxbWithKch 每教学班含 jxbrl(容量)与 do_jxb_id(选退课令牌),无已选人数;
   - 两接口 jxb_id 一致,可按 jxb_id join 出"已选/容量"。
@@ -39,6 +42,12 @@ JXB_WITH_KCH_URL = f"{BASE}/xsxk/zzxkyzbjk_cxJxbWithKchZzxkYzb.html?gnmkdm=N2535
 CHOOSED_DISPLAY_URL = f"{BASE}/xsxk/zzxkyzb_cxZzxkYzbChoosedDisplay.html?gnmkdm=N253512"
 SELECT_URL = f"{BASE}/xsxk/zzxkyzbjk_xkBcZyZzxkYzb.html?gnmkdm=N253512"
 DROP_URL = f"{BASE}/xsxk/zzxkyzb_tuikBcZzxkYzb.html?gnmkdm=N253512"
+
+# 每个分页窗口取多少门课,以及最多翻多少个窗口(= 每个分类最多 _WINDOW_COURSES *
+# _MAX_WINDOWS 门课)。2026-09-16 实测:交叉课程(69)有 286 门课/546 个教学班,
+# 而旧默认值 jspage=10 + 15 个窗口只能扫到前 150 门,目录少了近一半还不自知。
+_WINDOW_COURSES = 50
+_MAX_WINDOWS = 40
 
 _AJAX_HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -87,7 +96,17 @@ _HIDDEN_RE = re.compile(r"<input\b[^>]*>", re.I)
 
 
 class SessionExpired(RuntimeError):
-    """session 失效或选课模块不可达(首页非 200 / 无页签)。"""
+    """session 失效或选课模块不可达(首页非 200 / 无页签 / ajax 回 901)。"""
+
+
+# 正方的 ajax 接口在会话失效时回 status=901 且响应体为空(2026-09-16 联网实测),
+# 页面请求则是 302。同一个 JAccount 同时只有一个有效会话:监控、全量抓取、评分
+# 刷新等并发跑时后登录的会把先前的顶掉,先前那个从此每个请求都拿 901。
+SESSION_STATUSES = (302, 401, 403, 901)
+SESSION_HINT = (
+    "登录会话已失效(同一 JAccount 同时只能有一个会话，"
+    "监控与全量抓取同时跑会互相顶掉)"
+)
 
 
 def _parse_hidden_inputs(html: str) -> dict[str, str]:
@@ -176,20 +195,55 @@ def _slim_seat_row(row: dict) -> dict:
     return out
 
 
+def _post_json(
+    session: requests.Session, url: str, payload: dict, *,
+    what: str, target: str = "", timeout: int = 20, retries: int = 1,
+    retry_sleep: float = 1.0,
+):
+    """POST 并解析 JSON。失败返回 None —— 与"服务端合法地回了空结果"区分开。
+
+    教务接口偶发回 302/空响应(会话被挤、网关抖动、瞬时限流),重试一次多半就好;
+    真失败时把 status/content-type/响应长度一并打出来,否则日志里只剩一个冒号,
+    根本没法判断是掉登录还是服务端错误。
+    """
+    label = f"{what}({target})" if target else what
+    for attempt in range(retries + 1):
+        r = session.post(url, data=payload, headers=_AJAX_HEADERS,
+                         timeout=timeout, allow_redirects=False)
+        ct = r.headers.get("content-type", "")
+        if r.status_code in SESSION_STATUSES:
+            # 重试也没用:这个 session 已经被顶掉,必须重新登录。
+            raise SessionExpired(f"zzxk {label} {SESSION_HINT}: status={r.status_code}")
+        if "json" in ct:
+            try:
+                return r.json()
+            except ValueError as e:
+                reason = f"JSON 解析失败: {e}"
+        else:
+            body = r.text[:120].strip()
+            reason = (f"非 JSON status={r.status_code} ct={ct or '-'} "
+                      f"len={len(r.text)}" + (f" body={body}" if body else " body=空"))
+        if attempt < retries:
+            log.warning("zzxk %s %s,%.1fs 后重试", label, reason, retry_sleep)
+            time.sleep(retry_sleep)
+            continue
+        log.warning("zzxk %s %s,本次放弃", label, reason)
+    return None
+
+
 def fetch_part_display(
     session: requests.Session, source: dict, kspage: int, jspage: int,
-) -> list[dict]:
-    """抓一个分页窗口的课程列表(每行=一个教学班,含 yxzrs)。"""
+) -> list[dict] | None:
+    """抓一个分页窗口的课程列表(每行=一个教学班,含 yxzrs)。
+
+    返回 None 表示请求失败(区别于空窗口 [] —— 后者是"这个分类翻完了"的终止信号)。
+    """
     payload = {**_pick(source, _PART_KEYS, "PartDisplay"),
                "kspage": str(kspage), "jspage": str(jspage)}
-    r = session.post(PART_DISPLAY_URL, data=payload, headers=_AJAX_HEADERS,
-                     timeout=30, allow_redirects=False)
-    ct = r.headers.get("content-type", "")
-    if "json" not in ct:
-        log.warning("zzxk PartDisplay 非 JSON (status=%s): %s",
-                    r.status_code, r.text[:120].strip())
-        return []
-    data = r.json()
+    data = _post_json(session, PART_DISPLAY_URL, payload, what="PartDisplay",
+                      target=f"{source.get('kklxdm')} p{kspage}-{jspage}", timeout=30)
+    if data is None:
+        return None
     tmp = data.get("tmpList") if isinstance(data, dict) else None
     return tmp if isinstance(tmp, list) else []
 
@@ -204,19 +258,14 @@ def fetch_jxb_capacity(
         "cxbj": course_row.get("cxbj", "0"),
         "fxbj": course_row.get("fxbj", "0"),
     }
-    r = session.post(JXB_WITH_KCH_URL, data=payload, headers=_AJAX_HEADERS,
-                     timeout=20, allow_redirects=False)
-    if "json" not in r.headers.get("content-type", ""):
-        log.warning("zzxk JxbWithKch 非 JSON (kch=%s): %s",
-                    course_row.get("kch"), r.text[:120].strip())
-        return []
-    data = r.json()
+    data = _post_json(session, JXB_WITH_KCH_URL, payload, what="JxbWithKch",
+                      target=f"kch={course_row.get('kch')}")
     return data if isinstance(data, list) else []
 
 
 def sweep_category(
     session: requests.Session, source: dict,
-    max_windows: int = 15, jspage: int = 10, sleep: float = 1.0,
+    max_windows: int = _MAX_WINDOWS, jspage: int = _WINDOW_COURSES, sleep: float = 1.0,
 ) -> list[dict]:
     """翻页扫完一个分类,返回瘦身+归一化后的教学班行(按 jxb_id 去重)。
 
@@ -227,6 +276,11 @@ def sweep_category(
         rows = fetch_part_display(
             session, source, w * jspage + 1, (w + 1) * jspage
         )
+        if rows is None:
+            # 请求失败,不能当成"翻完":后面还有没有课程无从得知,只能明说目录不完整。
+            log.warning("zzxk 分类 %s 第 %d 个窗口请求失败,本分类目录可能不完整(已取到 %d 个教学班)",
+                        source.get("kklxdm"), w + 1, len(seen))
+            break
         if not rows:
             break
         for row in rows:
@@ -235,14 +289,15 @@ def sweep_category(
                 seen[jxb_id] = _slim_seat_row(row)
         time.sleep(sleep)
     else:
-        log.warning("zzxk 分类 %s 达到 max_windows=%d 上限,目录可能不完整",
-                    source.get("kklxdm"), max_windows)
+        log.warning("zzxk 分类 %s 翻满 %d 个窗口(%d 门课)仍未结束,目录被截断了;"
+                    "请调大 _MAX_WINDOWS/_WINDOW_COURSES 后重抓",
+                    source.get("kklxdm"), max_windows, max_windows * jspage)
     return list(seen.values())
 
 
 def fetch_full_catalog(
     session: requests.Session, *, with_capacity: bool = False,
-    max_windows: int = 15, jspage: int = 10, sleep: float = 1.0,
+    max_windows: int = _MAX_WINDOWS, jspage: int = _WINDOW_COURSES, sleep: float = 1.0,
 ) -> list[dict]:
     """枚举全部分类的课程目录(bootstrap 用)。
 
@@ -272,8 +327,11 @@ def fetch_full_catalog(
             for r in rows:
                 if r.get("kch_id"):
                     by_kch_id.setdefault(r["kch_id"], []).append(r)
+            no_detail: list[str] = []
             for kch_id, crows in by_kch_id.items():
                 details = fetch_jxb_capacity(session, source, crows[0])
+                if not details:
+                    no_detail.append(str(crows[0].get("kch") or kch_id))
                 time.sleep(sleep)
                 detail_by_id = {d.get("jxb_id"): d for d in details}
                 for r in crows:
@@ -282,6 +340,11 @@ def fetch_full_catalog(
                         for key in ("jxbrl", "jsxx", "sksj", "jxdd"):
                             if d.get(key) is not None:
                                 r[key] = d[key]
+            if no_detail:
+                # 缺容量/上课时间的课在 GUI 里空位显示"未知",冲突判断也会按"时间未知"
+                # 处理(不会被自动选中),所以这里汇总一条,方便重跑一次全量目录。
+                log.warning("[zzxk] 分类 %s: %d 门课没取到容量/时间/地点: %s",
+                            tab["kklxdm"], len(no_detail), ",".join(no_detail[:10]))
 
         for r in rows:
             kch_id, kch = r.get("kch_id"), r.get("kch")
@@ -332,7 +395,7 @@ def _load_capacity_cache() -> dict[str, dict]:
 def _save_capacity_cache(cache: dict) -> None:
     tmp = config.ZZXK_CAPACITY_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(cache, ensure_ascii=False, indent=2), "utf-8")
-    tmp.replace(config.ZZXK_CAPACITY_FILE)
+    config.replace_atomic(tmp, config.ZZXK_CAPACITY_FILE)
 
 
 def _cache_needs_refresh(jxb_id: str, cache: dict) -> bool:
@@ -343,7 +406,7 @@ def _cache_needs_refresh(jxb_id: str, cache: dict) -> bool:
 
 def fetch_seats(
     session: requests.Session, courses: dict[str, dict], *,
-    max_windows: int = 15, jspage: int = 10, sleep: float = 0.5,
+    max_windows: int = _MAX_WINDOWS, jspage: int = _WINDOW_COURSES, sleep: float = 0.5,
 ) -> dict[str, dict]:
     """查询若干 zzxk 课程当前的已选/容量(monitor 每轮调用)。
 
@@ -392,7 +455,11 @@ def fetch_seats(
             if not need:
                 continue
             time.sleep(sleep)
-            for d in fetch_jxb_capacity(session, source, course_row):
+            details = fetch_jxb_capacity(session, source, course_row)
+            if not details:
+                log.warning("zzxk 课程 %s 本轮没取到容量/时间,沿用缓存(缓存也没有时空位判断为未知)",
+                            course_row.get("kch") or kch_id)
+            for d in details:
                 jxb_id = d.get("jxb_id")
                 if not jxb_id:
                     continue
@@ -425,10 +492,8 @@ def fetch_choosed(session: requests.Session, source: dict | None = None) -> list
     keys = ("jg_id", "zyh_id", "njdm_id", "zyfx_id", "bh_id", "xz", "ccdm",
             "xqh_id", "xkxnm", "xkxqm", "xkly")
     payload = {k: source.get(k, "") for k in keys}
-    r = session.post(CHOOSED_DISPLAY_URL, data=payload, headers=_AJAX_HEADERS,
-                     timeout=20, allow_redirects=False)
-    if "json" not in r.headers.get("content-type", ""):
-        log.warning("zzxk ChoosedDisplay 非 JSON: %s", r.text[:120].strip())
-        return []
-    data = r.json()
+    data = _post_json(session, CHOOSED_DISPLAY_URL, payload, what="ChoosedDisplay")
+    if data is None:
+        # 不能吞成空列表:调用方会把"查询失败"当成"一门课都没选",进而覆盖已选记录。
+        raise SessionExpired("zzxk ChoosedDisplay 查询失败(详见上一条警告)")
     return data if isinstance(data, list) else []

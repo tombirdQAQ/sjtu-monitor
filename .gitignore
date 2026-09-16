@@ -9,6 +9,8 @@ catalog.json
 zzxk_capacity.json
 seat_details.json
 ratings.json
+# 按学期保存的状态目录
+/terms/
 *.log
 captcha_debug/
 __pycache__/
@@ -37,3 +39,7 @@ src-tauri/resources/
 build/
 secrets.local.json
 /site
+*.DS_Store
+*.swp
+session.json
+session.lock

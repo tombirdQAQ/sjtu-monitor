@@ -576,6 +576,8 @@ nav button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; 
 .ratingCompact { color: var(--text-muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .ratingCompact.rated { color: var(--rating-text); font-weight: 650; }
 .ratingCompact.failed { color: var(--destructive); }
+/* 课程有评分但没有本班老师的:不高亮,免得被当成本班老师的分数 */
+.ratingCompact.teacher_unrated { color: var(--text-muted); font-style: italic; }
 .listEmpty {
   display: grid;
   min-height: 90px;
@@ -618,9 +620,11 @@ nav button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; 
 .ratingHero dt { color: color-mix(in srgb, var(--rating-text) 72%, var(--text-muted)); font-size: 10px; }
 .ratingHero dd { overflow: hidden; margin: 4px 0 0; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .ratingHero > p { grid-column: 1 / -1; color: var(--rating-text); font-size: 11px; }
-.ratingHero.empty, .ratingHero.unknown, .ratingHero.not_found { border-color: var(--border); background: var(--surface-soft); }
+.ratingHero.empty, .ratingHero.unknown, .ratingHero.not_found,
+.ratingHero.teacher_unrated { border-color: var(--border); background: var(--surface-soft); }
 .ratingHero.empty > div > span, .ratingHero.empty > div > strong,
 .ratingHero.unknown > div > span, .ratingHero.unknown > div > strong,
+.ratingHero.teacher_unrated > div > span, .ratingHero.teacher_unrated > div > strong,
 .ratingHero.not_found > div > span, .ratingHero.not_found > div > strong { color: var(--text-muted); }
 .ratingHero.failed { border-color: color-mix(in srgb, var(--destructive) 42%, var(--border)); background: color-mix(in srgb, var(--destructive) 8%, var(--surface)); }
 .detailSections { display: grid; gap: 14px; }
@@ -952,3 +956,17 @@ nav button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; 
   .planEditor { grid-template-columns: 1fr; }
   .priorityActions { display: flex; flex-wrap: wrap; }
 }
+
+/* 与本组外已选课程冲突、按规则不会被选择的方案课程 */
+.priorityRow.blocked { border-color: var(--badge-danger-border); }
+.priorityRow.blocked .priorityIndex { background: var(--badge-danger-bg); color: var(--badge-danger-text); }
+.priorityRow small.conflictNote { color: var(--badge-danger-text); }
+
+/* 课程方案页学期切换条 */
+.termBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); }
+.termCurrent { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.termCurrent > strong { font-size: 13px; color: var(--text); }
+.termSite { font-size: 12px; color: var(--text-muted); }
+.termSite.mismatch { color: var(--badge-danger-text); }
+.termHistory { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.termChip { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--secondary); }
