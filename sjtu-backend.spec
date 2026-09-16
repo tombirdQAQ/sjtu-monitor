@@ -36,7 +36,7 @@ hiddenimports += [
     "bs4", "PIL", "dotenv",
     "apppaths", "config", "secure_store", "notifier",
     "login", "timetable", "swap", "zzxk", "course_plus",
-    "gui_backend", "monitor", "bootstrap",
+    "gui_backend", "monitor", "bootstrap", "ng_service", "ng_logic",
 ]
 
 # win11toast 在 notifier.py 里是函数内懒加载,Windows 独立版要靠它弹桌面通知,
