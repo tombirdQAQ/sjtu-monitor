@@ -97,3 +97,16 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 - 构建：`ng/macos/build-app.sh [debug|release]`，产物为 `ng/macos/build/交我选.app`。
 - 测试：`cd ng/macos && swift test`（包含一个真正启动 `ng_service.py` 的端到端用例）；Python 侧运行 `python -m unittest test_ng_service`。
 - 验证真实数据能否解码：先把 `snapshot` 的输出存成 JSON，再用 `NG_SNAPSHOT_JSON=<该文件> swift test --filter RealSnapshotTests`。
+
+## 开发与验证（Windows）
+- 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py --ng`，内部执行 `dotnet run`，按本机架构自动选 ARM64 或 x64。需要 .NET SDK 10，不需要 Visual Studio。
+- 构建：`dotnet build ng/windows/JiaoWoXuan/JiaoWoXuan.csproj -p:Platform=ARM64 -r win-arm64`（x64 机器把 ARM64 换成 x64）。
+- 测试：`dotnet test ng/windows/JiaoWoXuan.Core.Tests`。设置 `SJTU_MONITOR_PYTHON` 后，端到端用例会真正启动 `ng_service.py`，驱动 `AppStore` 完成"加课 → 冲突提示 → 保存"。
+- 结构：
+  - `JiaoWoXuan.Core`（net10.0，不依赖 WinUI）：模型、stdio 客户端、`AppStore` 状态；
+  - `JiaoWoXuan`（WinUI 3，非打包、自包含 Windows App SDK）：窗口、页面、托盘（H.NotifyIcon）、Toast 通知。
+- 依赖版本集中在 `ng/windows/Directory.Build.props`（Windows App SDK 2.4.0）。
+- 已知坑：
+  - **不要给 WinUI 项目加自定义 `app.manifest`**：Windows App SDK 会为非打包应用生成清单，自定义清单会让窗口在构造时于 `Microsoft.UI.Input.dll` 里 fail-fast（0xc0000602）；
+  - 通过 SSH/WMI 在非交互会话里启动 WinUI 窗口同样会崩，这是会话限制，不代表程序有问题。GUI 只能在桌面会话里验证。
+- 诊断：启动面包屑写在 `%LOCALAPPDATA%\sjtu-monitor-ng\startup.log`，托管异常写在同目录的 `crash.log`。

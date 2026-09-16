@@ -1,0 +1,70 @@
+<Page
+    x:Class="JiaoWoXuan.Pages.OverviewPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JiaoWoXuan">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="{StaticResource PageMaxWidth}" Padding="32,20,32,32" Spacing="16">
+            <Grid>
+                <StackPanel>
+                    <TextBlock x:Name="UserName" Style="{StaticResource TitleLargeTextBlockStyle}" />
+                    <TextBlock x:Name="UserTerm" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock x:Name="GeneratedAt" Style="{StaticResource SecondaryText}" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+            </Grid>
+
+            <Border Style="{StaticResource CardBorder}">
+                <Grid ColumnSpacing="20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon x:Name="MonitorIcon" Glyph="&#xE9D9;" FontSize="28" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="MonitorTitle" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock x:Name="MonitorSubtitle" Style="{StaticResource SecondaryText}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="轮询间隔" Style="{StaticResource SecondaryText}" />
+                            <TextBlock x:Name="IntervalText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="自动换课" Style="{StaticResource SecondaryText}" />
+                            <local:StatusBadge x:Name="AutoSwapBadge" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button x:Name="OnceButton" Content="单次检查" Click="OnRunOnce" />
+                        <Button x:Name="MonitorButton" Click="OnToggleMonitor" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid x:Name="MetricsGrid" ColumnSpacing="12" />
+
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource CardBorder}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="当前用户" Style="{StaticResource SectionTitle}" />
+                        <Grid x:Name="ProfileGrid" ColumnSpacing="16" RowSpacing="8" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource CardBorder}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="方案状态" Style="{StaticResource SectionTitle}" />
+                        <TextBlock x:Name="NoGroups" Text="尚未创建选课方案" Style="{StaticResource SecondaryText}" Visibility="Collapsed" />
+                        <StackPanel x:Name="GroupList" Spacing="2" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

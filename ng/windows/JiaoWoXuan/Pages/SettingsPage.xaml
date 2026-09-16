@@ -1,0 +1,98 @@
+<Page
+    x:Class="JiaoWoXuan.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer>
+            <StackPanel MaxWidth="820" Padding="32,20,32,24" Spacing="6">
+                <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,12" />
+
+                <TextBlock Text="外观" Style="{StaticResource SectionTitle}" />
+                <Border Style="{StaticResource CardBorder}">
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="应用主题" />
+                            <TextBlock Text="浅色、深色，或跟随 Windows 设置" Style="{StaticResource SecondaryText}" />
+                        </StackPanel>
+                        <ComboBox x:Name="ThemeBox" HorizontalAlignment="Right" MinWidth="140" SelectionChanged="OnThemeChanged">
+                            <x:String>跟随系统</x:String>
+                            <x:String>浅色</x:String>
+                            <x:String>深色</x:String>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="交大 JAccount" Style="{StaticResource SectionTitle}" Margin="0,16,0,8" />
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel Spacing="12">
+                        <TextBox x:Name="JaccountUser" Header="JAccount" TextChanged="OnEdited" />
+                        <PasswordBox x:Name="JaccountPass" Header="JAccount 密码" PasswordChanged="OnEdited" />
+                        <PasswordBox x:Name="CoursePlusPass" Header="选课社区 course.sjtu.plus 密码" PasswordChanged="OnEdited" />
+                        <TextBlock x:Name="SecretHint" Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="轮询" Style="{StaticResource SectionTitle}" Margin="0,16,0,8" />
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <NumberBox x:Name="PollMin" Header="最小间隔（秒）" Minimum="5" Maximum="3600" SmallChange="5"
+                                       SpinButtonPlacementMode="Inline" MinWidth="180" ValueChanged="OnNumberEdited" />
+                            <NumberBox x:Name="PollMax" Header="最大间隔（秒）" Minimum="5" Maximum="3600" SmallChange="5"
+                                       SpinButtonPlacementMode="Inline" MinWidth="180" ValueChanged="OnNumberEdited" />
+                        </StackPanel>
+                        <TextBlock Text="持续监控会在此区间内随机等待，降低固定频率请求特征。" Style="{StaticResource SecondaryText}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="邮件通知" Style="{StaticResource SectionTitle}" Margin="0,16,0,8" />
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel Spacing="12">
+                        <ToggleSwitch x:Name="EmailEnabled" Header="启用邮件通知" Toggled="OnEdited" />
+                        <Grid ColumnSpacing="12" RowSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition /><RowDefinition /><RowDefinition />
+                            </Grid.RowDefinitions>
+                            <TextBox x:Name="SmtpHost" Header="SMTP 服务器" TextChanged="OnEdited" />
+                            <NumberBox x:Name="SmtpPort" Grid.Column="1" Header="端口" Minimum="1" Maximum="65535" ValueChanged="OnNumberEdited" />
+                            <TextBox x:Name="SmtpUser" Grid.Row="1" Header="用户名" TextChanged="OnEdited" />
+                            <PasswordBox x:Name="SmtpPass" Grid.Row="1" Grid.Column="1" Header="密码" PasswordChanged="OnEdited" />
+                            <TextBox x:Name="MailFrom" Grid.Row="2" Header="发件人" TextChanged="OnEdited" />
+                            <TextBox x:Name="MailTo" Grid.Row="2" Grid.Column="1" Header="收件人" TextChanged="OnEdited" />
+                        </Grid>
+                        <TextBlock Text="默认使用交大邮箱 mail.sjtu.edu.cn:465（SSL），账号为 jAccount@sjtu.edu.cn，密码复用 JAccount 密码；改用其他邮箱时覆盖对应字段即可。"
+                                   Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                        <Button x:Name="TestMailButton" Content="保存并发送测试邮件" Click="OnTestMail" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel x:Name="DevSection">
+                    <TextBlock Text="开发" Style="{StaticResource SectionTitle}" Margin="0,16,0,8" />
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel Spacing="8">
+                            <ToggleSwitch x:Name="DebugToggle" Header="启动进程时输出调试日志" Toggled="OnDebugToggled" />
+                            <TextBlock x:Name="DataDirText" Style="{StaticResource SecondaryText}" IsTextSelectionEnabled="True" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Padding="32,12" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Grid MaxWidth="820">
+                <TextBlock x:Name="DirtyText" Text="有未保存的修改；正在运行的监控需重启后使用新参数" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
+                <Button x:Name="SaveButton" Content="保存设置" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Right" Click="OnSave" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

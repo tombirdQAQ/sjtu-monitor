@@ -1,0 +1,8 @@
+<Project>
+  <!-- ng Windows 客户端共用的依赖版本。 -->
+  <PropertyGroup>
+    <WindowsAppSdkVersion>2.4.0</WindowsAppSdkVersion>
+    <WindowsSdkBuildToolsVersion>10.0.28000.2705</WindowsSdkBuildToolsVersion>
+    <NotifyIconVersion>2.*</NotifyIconVersion>
+  </PropertyGroup>
+</Project>

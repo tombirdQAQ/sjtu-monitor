@@ -11,6 +11,7 @@ Python executable to use for gui_backend.py / ng_service.py, monitor.py, and boo
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -66,7 +67,13 @@ def run_ng() -> int:
             print("未找到 dotnet。请先安装 .NET SDK 10。", file=sys.stderr)
             return 1
         project = ROOT / "ng" / "windows" / "JiaoWoXuan" / "JiaoWoXuan.csproj"
-        cmd = [dotnet, "run", "--project", str(project)]
+        # WinUI 3 需要具体平台;按本机架构选 ARM64 或 x64。
+        arm = platform.machine().lower() in ("arm64", "aarch64")
+        cmd = [
+            dotnet, "run", "--project", str(project),
+            f"-p:Platform={'ARM64' if arm else 'x64'}",
+            "-r", "win-arm64" if arm else "win-x64",
+        ]
     else:
         print("ng 原生客户端目前只支持 macOS 与 Windows。", file=sys.stderr)
         return 1
