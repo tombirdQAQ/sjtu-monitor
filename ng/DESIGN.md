@@ -56,7 +56,7 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 | `onboarding.complete` | – | `{ok}` |
 | `term.switch` | `{xkxnm, xkxqm}` | `{ok, active_term}` |
 | `autoswap.set` | `{enabled, dry_run}` | `{ok}` |
-| `process.start` | `{task, debug?}` | `{ok, running}` |
+| `process.start` | `{task, debug?, adopt_site_term?}` | `{ok, running}` |
 | `process.stop` | `{task}` | `{ok, running}` |
 | `process.list` | – | `{running}` |
 | `logs.query` | `{level?, query?, limit?}` | `{entries:[{time,level,source,message}], counts}` |
@@ -67,8 +67,7 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 |---|---|
 | `once` | `monitor.py --once` |
 | `monitor` | `monitor.py` |
-| `bootstrap` | `bootstrap.py` |
-| `onboarding-sync` | `bootstrap.py --adopt-site-term`（运行标签仍为 `bootstrap`） |
+| `bootstrap` | `bootstrap.py`；`adopt_site_term: true` 时加 `--adopt-site-term`（首次引导） |
 | `ratings-all` | `bootstrap.py --fetch-ratings-all` |
 | `detect-term` | `bootstrap.py --detect-term` |
 
@@ -77,7 +76,7 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 | event | data |
 |---|---|
 | `process.output` | `{task, entry:{time,level,source,message}}` |
-| `process.exited` | `{task, code, notice?:{title,message}, status?}`：抓取类进程失败时带 `notice` |
+| `process.exited` | `{task, code, stopped, notice?:{title,message}, result?}`：抓取类进程失败（且不是用户主动停止）时带 `notice` |
 | `processes` | `{running:[...]}`：运行中的任务集合有变化时推送 |
 | `state.changed` | `{files:[...]}`：状态文件的 mtime 变化时推送，客户端据此重新取快照 |
 
@@ -92,3 +91,9 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 3. **Windows MVP**：同一套功能，通过 `ssh winpc-ts` 编译和冒烟测试。
 4. **打包**：`sjtu-backend` sidecar 放进 `.app` 和 Windows 安装包；CI 增加 Swift 和 .NET 构建。
 5. **收尾**：通知改由原生客户端负责（`monitor.py` 在 ng 模式下只输出结构化事件），菜单栏/托盘快捷操作。
+
+## 开发与验证（macOS）
+- 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py --ng`（会先构建 debug 版 `.app`，再以源码后端启动）。
+- 构建：`ng/macos/build-app.sh [debug|release]`，产物为 `ng/macos/build/交我选.app`。
+- 测试：`cd ng/macos && swift test`（包含一个真正启动 `ng_service.py` 的端到端用例）；Python 侧运行 `python -m unittest test_ng_service`。
+- 验证真实数据能否解码：先把 `snapshot` 的输出存成 JSON，再用 `NG_SNAPSHOT_JSON=<该文件> swift test --filter RealSnapshotTests`。
