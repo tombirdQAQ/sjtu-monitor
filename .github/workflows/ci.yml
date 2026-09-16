@@ -43,7 +43,7 @@ jobs:
 
       # 仅运行当前保留的 Python 离线单测文件。
       - name: Unit tests
-        run: python -m unittest -v test_gui_logic.py test_gui_responsive.py
+        run: python -m unittest -v test_gui_logic.py test_gui_responsive.py test_monitor_choosed.py test_terms.py test_partial_data.py test_shared_session.py test_ratings.py
 
   # 分支规则要求的固定检查名。if: always() 保证矩阵失败时它仍然运行并如实报错,
   # 否则 job 会被跳过、必需检查永远拿不到结论。

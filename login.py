@@ -21,6 +21,7 @@ from urllib.parse import urljoin
 import requests
 
 import config
+import session_store
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def _parse_login_context(html: str) -> dict[str, str]:
     return fields
 
 
-def _is_logged_in(session: requests.Session) -> bool:
+def is_logged_in(session: requests.Session) -> bool:
     """探针:任选一门 tjxkbkk 课程查询,返回 JSON 即为登录有效。
 
     zzxk 轮次的课程没有单课查询模板(build_query_payload 返回 None),跳过;
@@ -99,7 +100,7 @@ def login(session: requests.Session, max_attempts: int = 5) -> None:
 
     session.headers.setdefault("User-Agent", config.USER_AGENT)
 
-    if _is_logged_in(session):
+    if is_logged_in(session):
         log.info("session 仍有效,跳过登录")
         return
 
@@ -201,7 +202,7 @@ def login(session: requests.Session, max_attempts: int = 5) -> None:
             # 注意 url 可能是相对路径 (/jaccount/jalogin?...),要拼回绝对 URL
             absolute_url = urljoin(config.JACCOUNT_ULOGIN_URL, next_url)
             cb = session.get(absolute_url, allow_redirects=True, timeout=20)
-            if _is_logged_in(session):
+            if is_logged_in(session):
                 log.info("登录成功 -> %s", cb.url)
                 return
             log.warning(
@@ -228,6 +229,46 @@ def login(session: requests.Session, max_attempts: int = 5) -> None:
             login_page_url = r2.url
 
     raise LoginError(f"登录失败:连续 {max_attempts} 次验证码识别都没成功")
+
+
+# 本进程当前用的是哪一代共享会话:force 重登时用它区分"我过期了"和"别人已经重登过"。
+_GENERATION_ATTR = "_sjtu_session_generation"
+
+
+def ensure_session(session: requests.Session, *, force: bool = False,
+                   max_attempts: int = 5) -> None:
+    """取得可用的教务会话:优先复用进程间共享的 cookie,必要时才真正登录一次。
+
+    教务同一账号只允许一个有效会话,谁登录谁把别人顶掉;但同一份 cookie 可以多个
+    客户端并发使用(2026-09-16 实测)。所以监控、全量抓取、换课都走这里,共用一次
+    登录,不再互相顶掉 —— 这是"抓取时监控必须停"的替代方案。
+
+    force=True 用于请求已经被判定为会话失效之后:此时若别的进程已经重新登录过
+    (代次变了),直接复用它的会话;否则在锁内自己登录一次并写回共享记录。
+    """
+    mine = getattr(session, _GENERATION_ATTR, None)
+    if not force:
+        if mine:
+            return
+        shared = session_store.load(session)
+        # 磁盘上的会话可能早就被顶掉了(别的客户端登录过)。不探测就直接用,后续每个
+        # 请求都会 302/901 —— 首页读不到 hidden,还会被误判成"不在选课期间"。
+        if shared and is_logged_in(session):
+            setattr(session, _GENERATION_ATTR, shared)
+            return
+    with session_store.lock():
+        current = session_store.generation()
+        if current and current != mine:
+            # 别的进程刚登录过 —— 复用它的 cookie,再登一次只会把它顶掉。
+            shared = session_store.load(session)
+            if is_logged_in(session):
+                log.info("复用其他进程刚建立的登录会话")
+                setattr(session, _GENERATION_ATTR, shared)
+                return
+            log.info("其他进程的会话也已失效,重新登录")
+        # login() 自带"仍有效就跳过"的探测,所以这里不会白白多登一次。
+        login(session, max_attempts=max_attempts)
+        setattr(session, _GENERATION_ATTR, session_store.save(session))
 
 
 if __name__ == "__main__":

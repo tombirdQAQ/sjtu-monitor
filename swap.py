@@ -29,7 +29,7 @@ from typing import Literal
 import requests
 
 import config
-from login import login
+from login import ensure_session
 
 log = logging.getLogger("swap")
 
@@ -206,7 +206,7 @@ def main():
         sys.exit(2)
 
     session = requests.Session()
-    login(session)
+    ensure_session(session)
 
     if args.cmd == "drop":
         ok, _ = drop_course(session, args.jxb_id, dry_run=args.dry_run)

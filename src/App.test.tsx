@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { completeOnboarding, saveSettings, startProcess, type Snapshot } from "./api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { completeOnboarding, loadSnapshot, pollProcesses, saveSettings, startProcess, type Snapshot } from "./api";
 import App from "./App";
 
 const tauriWindowMock = vi.hoisted(() => ({
@@ -55,6 +55,10 @@ const snapshot: Snapshot = {
     fatal: false,
     members: [],
   }],
+  terms: [],
+  active_term: "2026-3",
+  site_term: null,
+  choosed: [],
   courses: [{
     jxb_id: "class-1",
     title: "大学物理",
@@ -170,7 +174,7 @@ describe("first-run onboarding", () => {
     expect(await screen.findByRole("heading", { name: "同步课程目录" })).toBeInTheDocument();
     expect(startProcess).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "开始同步课程" }));
-    expect(startProcess).toHaveBeenCalledWith("bootstrap", "bootstrap.py", [], false);
+    expect(startProcess).toHaveBeenCalledWith("bootstrap", "bootstrap.py", ["--adopt-site-term"], false);
   });
 
   it("previews the workbench offline via demo mode without any backend calls", async () => {
@@ -285,5 +289,46 @@ describe("course workspace", () => {
     await user.click(screen.getByRole("button", { name: "深色" }));
     expect(container.querySelector(".app")).toHaveClass("theme-dark");
     expect(screen.getByText("当前实际显示为深色模式。")).toBeInTheDocument();
+  });
+});
+
+describe("live snapshot refresh", () => {
+  beforeEach(() => {
+    // shouldAdvanceTime 让 RTL 的 findBy* 仍能在假定时器下推进。
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.mocked(pollProcesses).mockResolvedValue([]);
+    vi.mocked(loadSnapshot).mockResolvedValue(snapshot);
+  });
+
+  // 监控是常驻进程，不会触发 process-exit 的那次刷新；没有定时重取的话，页面上的
+  // 人数/容量会一直停在打开应用那一刻读到的值（实测教学班 65 变 66 界面不动）。
+  it("re-reads the snapshot while the monitor keeps running", async () => {
+    vi.mocked(pollProcesses).mockResolvedValue(["monitor"]);
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前用户" });
+    // 1.5s 的进程轮询先把状态切到“监控运行中”，快照定时器才会启动。
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(screen.getByText("持续监控中")).toBeInTheDocument();
+
+    const initialCalls = vi.mocked(loadSnapshot).mock.calls.length;
+    vi.mocked(loadSnapshot).mockResolvedValue({ ...snapshot, generated_at: "2026-07-09 12:00:30" });
+    await vi.advanceTimersByTimeAsync(20000);
+
+    expect(vi.mocked(loadSnapshot).mock.calls.length).toBeGreaterThan(initialCalls);
+    expect(await screen.findByText("2026-07-09 12:00:30")).toBeInTheDocument();
+  });
+
+  it("does not poll the bridge for snapshots while nothing is running", async () => {
+    vi.mocked(pollProcesses).mockResolvedValue([]);
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前用户" });
+
+    const initialCalls = vi.mocked(loadSnapshot).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(vi.mocked(loadSnapshot).mock.calls.length).toBe(initialCalls);
   });
 });

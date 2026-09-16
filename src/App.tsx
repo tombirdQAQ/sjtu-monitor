@@ -22,7 +22,7 @@ import {
   Sun,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,11 +76,17 @@ import {
   setAutoSwap,
   startProcess,
   stopProcess,
+  switchTerm,
   testEmail,
 } from "./api";
 import {
+  BootstrapResult,
+  bootstrapFailureNotice,
+  ConflictMark,
   conflictWarning,
+  parseBootstrapResult,
   CourseSort,
+  groupConflictMarks,
   formatRatingScore,
   LogLevel,
   parseLogLine,
@@ -123,6 +129,9 @@ const emptySettings: SettingsPayload = {
 };
 
 const RELEASE_MODE = import.meta.env.VITE_SJTU_RELEASE === "1";
+// 监控是常驻进程，不会触发 process-exit 那次刷新；运行期间按此间隔重取快照，
+// 否则页面上的人数/容量会一直停在打开应用那一刻读到的值。
+const SNAPSHOT_POLL_MS = 15000;
 
 function nowTime() {
   return new Date().toLocaleTimeString("zh-CN", { hour12: false });
@@ -192,6 +201,11 @@ function Badge({ tone, children }: { tone: string; children: React.ReactNode }) 
   return <UiBadge variant={variant}>{children}</UiBadge>;
 }
 
+function ConflictCountBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return <UiBadge variant="destructive" title="组内有课程与本组外已选课程时间冲突，按规则不会被选择">冲突 {count}</UiBadge>;
+}
+
 function BrandMark() {
   return (
     <span className="brandMark" role="img" aria-label="交我选">
@@ -232,10 +246,16 @@ function App() {
   const [debug, setDebug] = useState(false);
   const [status, setStatus] = useState("正在读取本地状态");
   const [busy, setBusy] = useState(false);
+  // 后台定时刷新要跳过“显式操作进行中”的时刻，而定时器闭包拿不到最新的 busy。
+  const busyRef = useRef(false);
+  const snapshotPolling = useRef(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [savedGroupsSignature, setSavedGroupsSignature] = useState("");
   const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1);
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  // 抓取类进程输出的结构化结果行，按进程标签暂存，退出时用来生成失败提示。
+  const processResults = useRef(new Map<string, BootstrapResult>());
   const [demoMode, setDemoMode] = useState(false);
 
   const groupsSignature = JSON.stringify(
@@ -246,6 +266,7 @@ function App() {
     })),
   );
   const groupsDirty = Boolean(savedGroupsSignature && groupsSignature !== savedGroupsSignature);
+  const monitorRunning = running.has("monitor");
   const theme: ThemeMode = themePreference === "system" ? (systemDark ? "dark" : "light") : themePreference;
 
   useEffect(() => {
@@ -309,6 +330,19 @@ function App() {
     await loadReal();
   }
 
+  // 只更新快照本身：groups/settings 可能正被用户编辑且没有脏标记，后台刷新不能覆盖。
+  async function refreshSnapshotOnly() {
+    if (demoMode || busyRef.current || snapshotPolling.current) return;
+    snapshotPolling.current = true;
+    try {
+      setSnapshot(await loadSnapshot());
+    } catch {
+      // 后台刷新失败保持上一次快照，不打断用户；下一次显式操作会暴露桥接错误。
+    } finally {
+      snapshotPolling.current = false;
+    }
+  }
+
   const DEMO_BLOCKED = "演示模式：仅用于界面预览，联网与写入操作已禁用";
 
   // Returns true (and surfaces a hint) when an action must be short-circuited
@@ -347,6 +381,8 @@ function App() {
     if (!isTauri()) return;
     const unsubs: Array<() => void> = [];
     listen<{ label: string; line: string }>("process-output", (event) => {
+      const result = parseBootstrapResult(event.payload.line);
+      if (result) processResults.current.set(event.payload.label, result);
       setRuntimeLines((lines) => [
         ...lines.slice(-499),
         { source: event.payload.label, text: event.payload.line, time: nowTime() },
@@ -366,6 +402,18 @@ function App() {
         next.delete(event.payload.label);
         return next;
       });
+      const { label, code } = event.payload;
+      const result = processResults.current.get(label) || null;
+      processResults.current.delete(label);
+      if (label === "bootstrap" || label === "detect-term") {
+        const action = label === "bootstrap" ? "获取全量课程" : "读取当前学期";
+        if (code !== 0) {
+          setNotice(bootstrapFailureNotice(result, code, action));
+        } else if (label === "detect-term" && result?.ok) {
+          const site = result.site_term as { label?: string } | undefined;
+          setStatus(`教务网站当前选课学期：${site?.label || "未开放"}`);
+        }
+      }
       refresh();
     }).then((unsub) => unsubs.push(unsub));
     const timer = window.setInterval(async () => {
@@ -381,6 +429,20 @@ function App() {
       unsubs.forEach((unsub) => unsub());
     };
   }, []);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
+  // 监控在跑的时候 state.json 会被后台改写，但没有任何事件通知前端；定时重取快照，
+  // 让快照页/课程页的人数、容量跟着变化，而不是等用户手动点刷新。
+  useEffect(() => {
+    if (demoMode || !monitorRunning) return;
+    const timer = window.setInterval(() => {
+      void refreshSnapshotOnly();
+    }, SNAPSHOT_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [demoMode, monitorRunning]);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -404,7 +466,13 @@ function App() {
     };
   }, [groupsDirty]);
 
+  const activeTerm = snapshot?.terms.find((term) => term.active) || null;
+  // 只有教务网站当前学期能抓到数据，其他学期仅作为历史记录展示，不提供切换/新增。
+  const historyTerms = (snapshot?.terms || []).filter((term) => !term.active);
   const selectedGroupData = groups.find((group) => group.name === selectedGroup) || null;
+  const selectedMarks = selectedGroupData && snapshot
+    ? groupConflictMarks(selectedGroupData.priority, snapshot.courses, snapshot.choosed)
+    : new Map<string, ConflictMark>();
   const selectedCourse = snapshot?.courses.find((course) => course.jxb_id === activeCourse);
 
   function createGroup() {
@@ -485,6 +553,26 @@ function App() {
     }
   }
 
+  async function changeTerm(xkxnm: string, xkxqm: string) {
+    if (blockInDemo()) return;
+    if (groupsDirty && !window.confirm("当前学期的方案还有未保存的修改，切换学期将放弃这些修改。确定切换吗？")) return;
+    setBusy(true);
+    try {
+      const result = await switchTerm(xkxnm, xkxqm);
+      resetSelection();
+      await refresh();
+      setStatus(
+        running.has("monitor")
+          ? `已切换到 ${result.active_term}；正在运行的监控仍按原学期执行，重启监控后生效`
+          : `已切换到 ${result.active_term}`,
+      );
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function replaceGroup(name: string, patch: Partial<PriorityGroup>) {
     setGroups((current) =>
       current.map((group) => (group.name === name ? { ...group, ...patch } : group)),
@@ -511,9 +599,9 @@ function App() {
     setStatus(`已加入 ${addedIds.length} 个教学班到“${selectedGroupData.name}”，尚未保存`);
     const warning = conflictWarning(
       addedIds,
-      selectedGroupData.name,
-      groups,
+      selectedGroupData.priority,
       snapshot.courses,
+      snapshot.choosed,
     );
     if (warning) window.alert(warning);
   }
@@ -655,6 +743,20 @@ function App() {
     }
   }
 
+  const noticeDialog = (
+    <AlertDialog open={notice !== null} onOpenChange={(open) => { if (!open) setNotice(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{notice?.title}</AlertDialogTitle>
+          <AlertDialogDescription>{notice?.message}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction asChild><Button onClick={() => setNotice(null)}>知道了</Button></AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
   if (snapshot && !snapshot.onboarding.completed) {
     const onboardingLogs = runtimeLines
       .filter((line) => line.source === "bootstrap")
@@ -702,7 +804,7 @@ function App() {
               {onboardingLogs.length > 0 && <div className="onboardingConsole">{onboardingLogs.map((line, index) => <p key={`${line.time}-${index}`}>{line.text}</p>)}</div>}
               <div className="onboardingActions split">
                 <Button variant="outline" onClick={() => setOnboardingStep(1)} disabled={running.has("bootstrap")}>返回修改账号</Button>
-                <Button onClick={() => run("bootstrap", "bootstrap.py")} disabled={running.has("bootstrap")}><RefreshCw className={running.has("bootstrap") ? "animate-spin" : ""} />{running.has("bootstrap") ? "同步中" : "开始同步课程"}</Button>
+                <Button onClick={() => run("bootstrap", "bootstrap.py", ["--adopt-site-term"])} disabled={running.has("bootstrap")}><RefreshCw className={running.has("bootstrap") ? "animate-spin" : ""} />{running.has("bootstrap") ? "同步中" : "开始同步课程"}</Button>
               </div>
             </div>
           )}
@@ -720,6 +822,7 @@ function App() {
           )}
           <p className="onboardingStatus">{status}</p>
         </section>
+        {noticeDialog}
       </div>
     );
   }
@@ -854,6 +957,7 @@ function App() {
                       <button key={group.name} className="listRow" onClick={() => { setPage("courses"); setSelectedGroup(group.name); }}>
                         <span>{group.name}</span>
                         <small>{group.held_label} / 监控 {group.watched_count}</small>
+                        <ConflictCountBadge count={groupConflictMarks(group.priority, snapshot.courses, snapshot.choosed).size} />
                         {group.fatal && <Badge tone="danger">暂停</Badge>}
                       </button>
                     ))}
@@ -874,6 +978,39 @@ function App() {
 
             {page === "courses" && (
               <section className="courseWorkspace">
+                <section className="termBar">
+                  <div className="termCurrent">
+                    <span>当前学期</span>
+                    <strong>{activeTerm?.label || snapshot.user.term}</strong>
+                    {snapshot.site_term?.key && (
+                      snapshot.site_term.matches_active
+                        ? <Badge tone="success">教务当前</Badge>
+                        : <Badge tone="danger">与教务当前不一致</Badge>
+                    )}
+                  </div>
+                  <span className={`termSite ${snapshot.site_term && !snapshot.site_term.matches_active ? "mismatch" : ""}`}>
+                    {snapshot.site_term
+                      ? snapshot.site_term.key
+                        ? `教务当前：${snapshot.site_term.label}（自主选课${snapshot.site_term.zzxk_open ? "开放" : "未开放"} / 补退选${snapshot.site_term.tjxkbkk_open ? "开放" : "未开放"}）`
+                        : "教务网站当前未开放选课"
+                      : "教务当前学期将在获取全量课程时读取"}
+                    {snapshot.site_term?.detected_at ? ` · ${snapshot.site_term.detected_at}` : ""}
+                  </span>
+                  {snapshot.site_term?.key && !snapshot.site_term.matches_active && (() => {
+                    const [xkxnm, xkxqm] = snapshot.site_term.key.split("-");
+                    return <Button onClick={() => changeTerm(xkxnm, xkxqm)} disabled={busy}>切换到教务当前学期</Button>;
+                  })()}
+                  {historyTerms.length > 0 && (
+                    <div className="termHistory">
+                      <span>历史学期</span>
+                      {historyTerms.map((term) => (
+                        <span className="termChip" key={term.key} title={term.catalog_fetched_at ? `课程目录更新于 ${term.catalog_fetched_at}` : "没有课程目录"}>
+                          {term.label}{term.group_count ? ` · ${term.group_count} 个方案` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </section>
                 <section className="courseToolbar">
                   <label className="modernSearch">
                     <Search size={16} />
@@ -998,6 +1135,7 @@ function App() {
                             <TabsTrigger key={group.name} value={group.name} className="planTab">
                               <span>{group.name}</span>
                               <small>{group.held_label} · {group.watched_count} 门</small>
+                              <ConflictCountBadge count={groupConflictMarks(group.priority, snapshot.courses, snapshot.choosed).size} />
                               {group.fatal && <UiBadge variant="destructive">暂停</UiBadge>}
                             </TabsTrigger>
                           ))}
@@ -1034,11 +1172,22 @@ function App() {
                         <div className="priorityList">
                           {selectedGroupData.priority.map((id, index) => {
                             const course = snapshot.courses.find((item) => item.jxb_id === id);
+                            const mark = selectedMarks.get(id);
                             return (
-                              <button key={id} className={`priorityRow ${selectedMember === id ? "selected" : ""}`} onClick={() => setSelectedMember(id)}>
+                              <button key={id} className={`priorityRow ${selectedMember === id ? "selected" : ""} ${mark ? "blocked" : ""}`} onClick={() => setSelectedMember(id)}>
                                 <span className="priorityIndex">{index + 1}</span>
-                                <span><strong>{course?.title || shortId(id)}</strong><small>{course?.summary || id}</small></span>
-                                {course?.chosen && <Badge tone="primary">当前持有</Badge>}
+                                <span>
+                                  <strong>{course?.title || shortId(id)}</strong>
+                                  <small>{course?.summary || id}</small>
+                                  {mark && (
+                                    <small className="conflictNote">
+                                      {mark.status === "conflict" ? `与已选 ${mark.with} 冲突：${mark.detail}` : "时间数据不全，无法判断冲突"}
+                                    </small>
+                                  )}
+                                </span>
+                                {course?.chosen
+                                  ? <Badge tone="primary">当前持有</Badge>
+                                  : mark && <Badge tone="danger">{mark.status === "conflict" ? "冲突·不会选" : "时间未知·不会选"}</Badge>}
                               </button>
                             );
                           })}
@@ -1242,6 +1391,7 @@ function App() {
           </>
         )}
       </main>
+      {noticeDialog}
     </div>
   );
 }
@@ -1260,6 +1410,7 @@ function CourseInspector({ course }: { course?: CourseRow }) {
   const ratingLabel = {
     rated: "课程评价",
     empty: "暂无评价",
+    teacher_unrated: "本班老师无评价",
     not_found: "社区未收录",
     failed: "评价获取失败",
     unknown: "尚未获取评价",

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CourseRow, PriorityGroup } from "./api";
+import type { ChosenCourse, CourseRow } from "./api";
 import {
+  bootstrapFailureNotice,
   conflictWarning,
+  groupConflictMarks,
+  parseBootstrapResult,
   formatRatingScore,
   parseLogLine,
   scheduleConflict,
@@ -43,6 +46,10 @@ function course(
   };
 }
 
+function chosen(jxbId: string, title: string, sksj: string): ChosenCourse {
+  return { jxb_id: jxbId, title, class_name: title, sksj };
+}
+
 describe("course sorting and rating formatting", () => {
   it("formats every numeric score with one decimal place", () => {
     expect(formatRatingScore(9.12345)).toBe("9.1");
@@ -76,19 +83,52 @@ describe("PySide-compatible schedule conflict checks", () => {
     ).toMatchObject({ conflict: true, detail: "周一 第2节 (第1周)" });
   });
 
-  it("warns against candidates in other groups and reports unknown data", () => {
+  it("warns only against chosen courses outside the target group", () => {
     const courses = [
       course("new", "新课程", 9, "星期一第1-2节{1-16周}"),
-      course("other", "冲突课程", 8, "星期一第2-3节{1-16周}"),
-      course("unknown", "时间未知", 7, "待定"),
+      course("vague", "时间不明", 8, "星期八"),
     ];
-    const groups: PriorityGroup[] = [
-      { name: "当前组", is_pe: false, priority: [], held_label: "-", watched_count: 0, fatal: false, members: [] },
-      { name: "其他组", is_pe: false, priority: ["other", "unknown"], held_label: "-", watched_count: 2, fatal: false, members: [] },
+    const choosed: ChosenCourse[] = [
+      chosen("held-same-group", "本组持有", "星期一第1-2节{1-16周}"),
+      chosen("other", "冲突课程", "星期一第2-3节{1-16周}"),
+      chosen("tbd", "不排课课程", "待定"),
     ];
-    const warning = conflictWarning(["new"], "当前组", groups, courses);
-    expect(warning).toContain("确定存在时间冲突");
-    expect(warning).toContain("无法判断是否冲突");
+    const warning = conflictWarning(["new", "vague"], ["held-same-group"], courses, choosed);
+    expect(warning).toContain("新课程 与已选 冲突课程 - 冲突课程");
+    expect(warning).toContain("周一 第2节 (第1周)");
+    expect(warning).not.toContain("本组持有");
+    expect(warning).toContain("缺少时间数据");
+    expect(warning).toContain("时间不明");
+    expect(conflictWarning(["new"], [], courses, [chosen("tbd", "不排课课程", "待定")])).toBeNull();
+  });
+});
+
+describe("groupConflictMarks", () => {
+  const courses = [
+    course("a", "A", null, "星期二第1-2节{1-16周}"),
+    course("b", "B", null, "星期三第1-2节{1-16周}"),
+    course("held", "Held", null, "星期二第1-2节{1-16周}"),
+    course("low", "Low", null, "星期二第1-2节{1-16周}"),
+  ];
+  const outside = chosen("x", "外部课", "星期二第2-3节{1-8周}");
+
+  it("marks only candidates above the highest chosen class in the group", () => {
+    const marks = groupConflictMarks(
+      ["a", "b", "held", "low"],
+      courses,
+      [chosen("held", "Held", "星期二第1-2节{1-16周}"), chosen("low", "Low", "星期二第1-2节{1-16周}"), outside],
+    );
+    expect([...marks.keys()]).toEqual(["a"]);
+    expect(marks.get("a")).toMatchObject({ status: "conflict", with: "外部课 - 外部课" });
+  });
+
+  it("checks the whole group when nothing in it is chosen", () => {
+    const marks = groupConflictMarks(["a", "b", "low"], courses, [outside]);
+    expect([...marks.keys()].sort()).toEqual(["a", "low"]);
+  });
+
+  it("returns no marks without chosen courses outside the group", () => {
+    expect(groupConflictMarks(["a", "held"], courses, [chosen("held", "Held", "星期二第1-2节{1-16周}")]).size).toBe(0);
   });
 });
 
@@ -133,5 +173,28 @@ describe("parseLogLine", () => {
     const plain = parseLogLine("bootstrap", "已保存 catalog.json", "12:00:01");
     expect(plain.level).toBe("info");
     expect(plain.time).toBe("12:00:01");
+  });
+});
+
+describe("bootstrap result handling", () => {
+  it("parses the structured result line even with a log prefix", () => {
+    const line = '[bootstrap-result] {"ok": false, "reason": "term_mismatch", "message": "学期不一致"}';
+    expect(parseBootstrapResult(line)).toMatchObject({ ok: false, reason: "term_mismatch" });
+    expect(parseBootstrapResult("INFO [bootstrap] 普通日志")).toBeNull();
+    expect(parseBootstrapResult("[bootstrap-result] {broken")).toBeNull();
+  });
+
+  it("builds a notice from the failure reason", () => {
+    expect(bootstrapFailureNotice({ ok: false, reason: "closed", message: "未开放" }, 3)).toEqual({
+      title: "教务网站选课未开放",
+      message: "未开放",
+    });
+  });
+
+  it("falls back to a generic hint when the process gave no result", () => {
+    const notice = bootstrapFailureNotice(null, 1);
+    expect(notice.title).toBe("获取全量课程失败");
+    expect(notice.message).toContain("exit=1");
+    expect(notice.message).toContain("学期");
   });
 });

@@ -35,15 +35,32 @@ def _format_change_line(c: dict) -> str:
     if kind == "removed":
         return f"[移除] {jxb} {name}"
     if kind == "conflict_skipped":
-        return (
-            f"⏭️ [跳过换课-时间冲突] {jxb} {name} — "
-            f"与「{c.get('conflict_group', '?')}」组当前持有课程冲突: {c.get('detail', '')}"
-        )
+        if c.get("conflict_course"):
+            group = f"「{c['conflict_group']}」组的" if c.get("conflict_group") else ""
+            other = f"{group}已选课程 {c['conflict_course']}"
+        else:
+            other = f"「{c.get('conflict_group', '?')}」组当前持有课程"
+        return f"⏭️ [跳过换课-时间冲突] {jxb} {name} — 与{other}冲突: {c.get('detail', '')}"
     if kind == "schedule_unknown_skip":
         return (
             f"⏭️ [跳过换课-时间未知] {jxb} {name} — "
-            "无法确认与其他方案组是否时间冲突,已保守跳过"
+            "无法确认与已选课程是否时间冲突,已保守跳过"
         )
+    if kind == "choosed_changed":
+        parts = []
+        if c.get("added"):
+            parts.append("新增 " + "、".join(c["added"]))
+        if c.get("removed"):
+            parts.append("减少 " + "、".join(c["removed"]))
+        return "📋 [已选课程变化] " + ("; ".join(parts) or "教学班有变动")
+    if kind == "choosed_fetch_failed":
+        if c.get("fallback") == "saved":
+            detail = f"暂用上次记录({c.get('count', 0)} 门)"
+        else:
+            detail = "无历史记录,暂按方案末项与换课记录推断"
+        return f"⚠️ [已选课程抓取失败] {detail},请留意是否在网页上手动改过课"
+    if kind == "choosed_fetch_recovered":
+        return f"✅ [已选课程抓取恢复] 当前已选 {c.get('count', 0)} 门"
     labels = {
         "yxzrs": "已选", "xzzrs": "选中", "cxrs": "抽选人数",
         "jxbrs": "班人数", "jxbxzrs": "班选中",
@@ -190,12 +207,15 @@ def send(changes: list[dict]) -> None:
         c.get("kind") == "swap_result" and c.get("ok") for c in changes
     )
     has_spot = any(c["kind"] == "spot_open" for c in changes)
+    has_choosed_alert = any(c["kind"] == "choosed_fetch_failed" for c in changes)
     if has_fatal:
         prefix = "❌ FATAL"
     elif has_swap_ok:
         prefix = "✅ 抢到了"
     elif has_spot:
         prefix = "🔥 有空位"
+    elif has_choosed_alert:
+        prefix = "⚠️ 告警"
     else:
         prefix = "[选课变更]"
     if len(changes) == 1:
@@ -212,6 +232,8 @@ def send(changes: list[dict]) -> None:
         title = "✅ SJTU 抢课成功"
     elif has_spot:
         title = "🔥 SJTU 选课有空位!"
+    elif has_choosed_alert:
+        title = "⚠️ SJTU 已选课程抓取失败"
     else:
         title = "SJTU 选课监控"
     _toast(title, toast_body)

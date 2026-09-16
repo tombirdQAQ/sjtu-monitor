@@ -76,7 +76,7 @@ export interface CourseRow {
 }
 
 export interface CourseRating {
-  status: "rated" | "empty" | "not_found" | "failed" | "unknown";
+  status: "rated" | "empty" | "teacher_unrated" | "not_found" | "failed" | "unknown";
   score: number | null;
   count: number | null;
   teacher: string | null;
@@ -103,6 +103,35 @@ export interface PriorityGroup {
   watched_count: number;
   fatal: boolean;
   members: GroupMember[];
+}
+
+export interface ChosenCourse {
+  jxb_id: string;
+  title: string;
+  class_name: string;
+  sksj?: string | null;
+  group?: string | null;
+}
+
+export interface TermOption {
+  key: string;
+  xkxnm: string;
+  xkxqm: string;
+  label: string;
+  active: boolean;
+  group_count: number;
+  catalog_fetched_at?: string | null;
+  is_site_term: boolean;
+}
+
+export interface SiteTermInfo {
+  /** 教务网站当前选课学期键；两个选课模块都未开放时为 null */
+  key: string | null;
+  label: string;
+  zzxk_open: boolean;
+  tjxkbkk_open: boolean;
+  detected_at?: string | null;
+  matches_active: boolean;
 }
 
 export interface StateRow {
@@ -136,8 +165,14 @@ export interface Snapshot {
     catalog_ready: boolean;
   };
   user: UserInfo;
+  terms: TermOption[];
+  active_term: string;
+  site_term: SiteTermInfo | null;
   groups: PriorityGroup[];
   courses: CourseRow[];
+  /** 服务器实际已选(monitor 每轮刷新,抓取失败时为上次记录) */
+  choosed: ChosenCourse[];
+  choosed_at?: string | null;
   state_rows: StateRow[];
   swap_state: {
     completed: string[];
@@ -183,6 +218,10 @@ export function completeOnboarding(): Promise<{ ok: boolean }> {
 
 export function testEmail(): Promise<{ ok: boolean; mail_to?: string }> {
   return desktopInvoke("test_email");
+}
+
+export function switchTerm(xkxnm: string, xkxqm: string): Promise<{ ok: boolean; active_term: string }> {
+  return desktopInvoke("switch_term", { input: { payload: { xkxnm, xkxqm } } });
 }
 
 export function setAutoSwap(enabled: boolean, dryRun: boolean): Promise<{ ok: boolean }> {

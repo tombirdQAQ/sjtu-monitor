@@ -314,6 +314,11 @@ fn test_email(app: AppHandle) -> Result<Value, String> {
 }
 
 #[tauri::command]
+fn switch_term(app: AppHandle, input: JsonPayload) -> Result<Value, String> {
+    run_backend(&app, "switch-term", Some(input.payload))
+}
+
+#[tauri::command]
 fn set_auto_swap(app: AppHandle, input: AutoSwapPayload) -> Result<Value, String> {
     let dry_run = if release_mode() { false } else { input.dry_run };
     run_backend(
@@ -431,6 +436,7 @@ pub fn run() {
             save_groups,
             complete_onboarding,
             set_auto_swap,
+            switch_term,
             test_email,
             start_process,
             stop_process,

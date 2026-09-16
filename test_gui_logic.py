@@ -144,7 +144,8 @@ class BootstrapIdentityTests(unittest.TestCase):
 
 class ReleaseInitializationTests(unittest.TestCase):
     def test_release_defaults_have_no_builtin_courses_or_groups(self):
-        self.assertEqual(config.default_settings()["courses"], {})
+        self.assertEqual(config.default_term_settings()["courses"], {})
+        self.assertEqual(config.default_settings()["terms"], {})
         self.assertEqual(config.default_priority_groups(), {})
         self.assertFalse(config.default_settings()["onboarding"]["completed"])
 

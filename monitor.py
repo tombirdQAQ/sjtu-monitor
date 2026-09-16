@@ -18,12 +18,13 @@ from pathlib import Path
 
 import requests
 
+import bootstrap
 import config
 import notifier
 import swap as swap_mod
 import timetable
 import zzxk
-from login import login, LoginError
+from login import LoginError, ensure_session
 
 log = logging.getLogger("monitor")
 
@@ -76,15 +77,20 @@ def _fetch_one_course(session: requests.Session, kch: str) -> list[dict]:
     return config.parse_class_list(endpoint, r.json())
 
 
-def fetch_courses(session: requests.Session) -> list[dict]:
-    """对 KCH_QUERIES 里的每门课查一次,返回所有教学班(按 jxb_id 去重)。
+def fetch_courses(session: requests.Session) -> tuple[list[dict], set[str]]:
+    """对 KCH_QUERIES 里的每门课查一次,返回 (所有教学班, 本轮没拿到数据的课程号)。
 
     endpoint 路由(两个选课轮次课程不重叠、id 不通用,2026-07 实测):
       display / pe → tjxkbkk 补退选接口(原有路径,逐课查询)
       zzxk         → zzxkyzb 自主选课模块(zzxk.fetch_seats,按分类批量查询)
+
+    接口偶尔会 200 返回空列表(服务端抖动/选课模块短暂关闭),这种"整门课一个班都
+    没有"的结果不能当成真实数据:第二个返回值交给 run_once 兜底,避免残缺结果覆盖
+    state.json 并误报教学班被删除。
     """
     all_classes: list[dict] = []
     seen: set[str] = set()
+    counts: dict[str, int] = {kch: 0 for kch in config.KCH_QUERIES}
     zzxk_courses: dict[str, dict] = {}
     for kch, q in config.KCH_QUERIES.items():
         if q.get("endpoint") == "zzxk":
@@ -96,6 +102,7 @@ def fetch_courses(session: requests.Session) -> list[dict]:
             if jxb_id and jxb_id not in seen:
                 seen.add(jxb_id)
                 all_classes.append(c)
+        counts[kch] = len(classes)
         log.debug("kch=%s 拉到 %d 个教学班", kch, len(classes))
     if zzxk_courses:
         try:
@@ -106,8 +113,10 @@ def fetch_courses(session: requests.Session) -> list[dict]:
             if jxb_id not in seen:
                 seen.add(jxb_id)
                 all_classes.append(c)
+            counts[c.get("kch")] = counts.get(c.get("kch"), 0) + 1
         log.debug("zzxk %d 门课拉到 %d 个教学班", len(zzxk_courses), len(rows))
-    return all_classes
+    missing = {kch for kch, n in counts.items() if not n}
+    return all_classes, missing
 
 
 def load_state() -> dict[str, dict]:
@@ -173,11 +182,30 @@ def _held_by_group(completed: set[str]) -> dict[str, str]:
     return held
 
 
-def _watched_ids(sw_state: dict | None = None) -> set[str]:
-    """只返回各组当前持有班之前的目标;致命失败组暂停监控。"""
+def _held_from_choosed(choosed_ids: set[str]) -> dict[str, str]:
+    """按实际已选计算每组持有:组内已选中优先级最高的一项;组内无已选则不出现在结果里。
+
+    取最高一项保证"不降级":即使组内还残留低优先级已选,也只把高优先级视为持有。
+    """
+    held: dict[str, str] = {}
+    for group, group_cfg in config.PRIORITY_GROUPS.items():
+        for jxb_id in group_cfg["priority"]:
+            if jxb_id in choosed_ids:
+                held[group] = jxb_id
+                break
+    return held
+
+
+def _watched_ids(
+    sw_state: dict | None = None, held: dict[str, str] | None = None,
+) -> set[str]:
+    """只返回各组当前持有班之前的目标(组内无持有则整组);致命失败组暂停监控。
+
+    held 缺省时按旧推断(方案末项 + 换课成功记录)计算。
+    """
     sw_state = _load_swap_state() if sw_state is None else sw_state
-    completed = set(sw_state.get("completed", []))
-    held = _held_by_group(completed)
+    if held is None:
+        held = _held_by_group(set(sw_state.get("completed", [])))
     watched = config.watched_ids(held)
     for group in sw_state.get("fatal_groups", []):
         group_cfg = config.PRIORITY_GROUPS.get(group)
@@ -263,6 +291,182 @@ def _save_swap_state(state: dict) -> None:
     config.replace_atomic(tmp, config.SWAP_STATE_FILE)
 
 
+# === 实际已选课程 ===
+# 每轮以服务器已选列表为准计算各组持有班,避免用户在网页上手动改课后监控端仍按旧推断操作。
+# 抓取失败时沿用上一次成功的记录(自动换课成功后会立即改写该记录)并告警;
+# 从未成功过则回退到"方案末项 + 换课成功记录"的旧推断。
+# 记录存于 catalog.json 的 choosed,GUI 据此显示当前已选与冲突标记。
+
+# 告警去重:长跑进程里连续失败只在开始失败和恢复时各通知一次。
+_choosed_fetch_failing = False
+_last_conflict_marks: dict[str, dict[str, dict]] | None = None
+
+
+def fetch_choosed(session: requests.Session) -> list[dict] | None:
+    """服务器上当前实际已选。
+
+    两个模块的已选接口实测返回同一份全部已选(2026-09 联网验证):tjxkbkk 优先,
+    失败或为空再试 zzxk。都失败/都为空返回 None(空列表无法与"学期参数不对"区分)。
+    """
+    for name, fetch in (("tjxkbkk", bootstrap.fetch_choosed),
+                        ("zzxk", zzxk.fetch_choosed)):
+        try:
+            rows = [row for row in fetch(session) if row.get("jxb_id")]
+        except Exception as e:
+            log.warning("[已选] %s 已选接口查询失败: %s", name, e)
+            continue
+        if rows:
+            return rows
+        log.warning("[已选] %s 已选接口返回空列表", name)
+    return None
+
+
+def _slim_choosed(row: dict) -> dict:
+    return bootstrap._slim_class(row, include_availability=False)
+
+
+def load_saved_choosed() -> dict[str, dict] | None:
+    """catalog.json 里上一次成功(或换课后改写)的已选记录;没有记录返回 None。"""
+    try:
+        catalog = json.loads(config.CATALOG_FILE.read_text("utf-8"))
+    except Exception:
+        return None
+    rows = catalog.get("choosed") if isinstance(catalog, dict) else None
+    if not isinstance(rows, list):
+        return None
+    saved = {
+        row["jxb_id"]: row for row in rows
+        if isinstance(row, dict) and row.get("jxb_id")
+    }
+    return saved or None
+
+
+def save_choosed(choosed: dict[str, dict]) -> None:
+    """只改写 catalog.json 的 choosed/choosed_at,其他分区原样保留。"""
+    catalog: dict = {}
+    if config.CATALOG_FILE.exists():
+        try:
+            catalog = json.loads(config.CATALOG_FILE.read_text("utf-8"))
+        except Exception as e:
+            log.warning("[已选] catalog.json 无法读取,不写入已选记录: %s", e)
+            return
+        if not isinstance(catalog, dict):
+            log.warning("[已选] catalog.json 格式异常,不写入已选记录")
+            return
+    catalog["choosed"] = list(choosed.values())
+    catalog["choosed_at"] = datetime.now().isoformat(timespec="seconds")
+    tmp = config.CATALOG_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), "utf-8")
+    config.replace_atomic(tmp, config.CATALOG_FILE)
+
+
+def _course_label(row: dict) -> str:
+    return f"{row.get('kcmc') or ''} {row.get('jxbmc') or row.get('jxb_id') or ''}".strip()
+
+
+def resolve_choosed(session: requests.Session) -> tuple[dict[str, dict] | None, list[dict]]:
+    """本轮使用的已选 {jxb_id: row} 及需要通知的记录。
+
+    - 抓取成功:以实时结果为准,与上次记录不同则通知并存盘;
+    - 抓取失败:沿用上次记录并告警;无记录返回 None(调用方回退旧推断)。
+    """
+    global _choosed_fetch_failing
+    saved = load_saved_choosed()
+    rows = fetch_choosed(session)
+    notes: list[dict] = []
+    if rows is not None:
+        live = {row["jxb_id"]: _slim_choosed(row) for row in rows}
+        if _choosed_fetch_failing:
+            notes.append({"kind": "choosed_fetch_recovered", "count": len(live)})
+        _choosed_fetch_failing = False
+        if saved is not None and set(saved) != set(live):
+            notes.append({
+                "kind": "choosed_changed",
+                "added": [_course_label(live[i]) for i in live if i not in saved],
+                "removed": [_course_label(saved[i]) for i in saved if i not in live],
+            })
+        if saved != live:
+            save_choosed(live)
+        log.info("[已选] 实时已选 %d 门", len(live))
+        return live, notes
+    fallback = "saved" if saved is not None else "config"
+    if fallback == "saved":
+        log.warning("[已选] 抓取失败,沿用上次记录(%d 门)", len(saved))
+    else:
+        log.warning("[已选] 抓取失败且无历史记录,回退为方案末项 + 换课记录推断")
+    if not _choosed_fetch_failing:
+        notes.append({
+            "kind": "choosed_fetch_failed",
+            "fallback": fallback,
+            "count": len(saved) if saved else 0,
+        })
+    _choosed_fetch_failing = True
+    return saved, notes
+
+
+def _conflict_with_choosed(
+    current: dict[str, dict], group: str, target_id: str, choosed: dict[str, dict],
+) -> tuple[dict | None, str | None, bool]:
+    """目标与"本组外"全部实际已选课程的时间冲突判定。
+
+    返回 (确定冲突的已选课程行或 None, 冲突时段描述, 是否存在无法判断的比较)。
+    本组内的已选(即将被换掉的持有班)不参与比较;不排课/待定的已选课程不占时段,跳过。
+    """
+    group_ids = set(config.PRIORITY_GROUPS.get(group, {}).get("priority", []))
+    target_sksj = current.get(target_id, {}).get("sksj")
+    schedule_unknown = False
+    for jxb_id, row in choosed.items():
+        if jxb_id in group_ids or timetable.is_unscheduled(row.get("sksj")):
+            continue
+        verdict = timetable.conflicts(target_sksj, row.get("sksj"))
+        if verdict is True:
+            return row, timetable.describe_conflict(target_sksj, row.get("sksj")), schedule_unknown
+        if verdict is None:
+            schedule_unknown = True
+    return None, None, schedule_unknown
+
+
+def conflict_marks(
+    current: dict[str, dict], watched: set[str], choosed: dict[str, dict],
+) -> dict[str, dict[str, dict]]:
+    """所有可能被选择的监控目标中,与本组外已选冲突(或无法判断)而不会被选择的课程,按组归集。"""
+    marks: dict[str, dict[str, dict]] = {}
+    for jxb_id in sorted(watched):
+        group = config.find_group(jxb_id)
+        if group is None or jxb_id in choosed:
+            continue
+        row, detail, unknown = _conflict_with_choosed(current, group, jxb_id, choosed)
+        if row is not None:
+            marks.setdefault(group, {})[jxb_id] = {
+                "status": "conflict", "with": row["jxb_id"], "detail": detail,
+            }
+        elif unknown:
+            marks.setdefault(group, {})[jxb_id] = {"status": "unknown"}
+    return marks
+
+
+def _log_conflict_marks(
+    marks: dict[str, dict[str, dict]], current: dict[str, dict], choosed: dict[str, dict],
+) -> None:
+    global _last_conflict_marks
+    if marks == _last_conflict_marks:
+        return
+    _last_conflict_marks = marks
+    if not marks:
+        log.info("[冲突] 监控目标与本组外已选课程均无时间冲突")
+        return
+    for group, items in marks.items():
+        for jxb_id, mark in items.items():
+            label = _course_label(current.get(jxb_id, {"jxb_id": jxb_id}))
+            if mark["status"] == "conflict":
+                other = _course_label(choosed.get(mark["with"], {"jxb_id": mark["with"]}))
+                log.info("[冲突] %s 组: %s 与已选 %s 冲突(%s),不会被选择",
+                         group, label, other, mark["detail"])
+            else:
+                log.info("[冲突] %s 组: %s 时间数据不全,无法判断冲突,不会被选择",
+                         group, label)
+
+
 def _conflict_with_other_groups(
     current: dict[str, dict], group: str, target_id: str, held: dict[str, str],
 ) -> tuple[str | None, str | None, bool]:
@@ -293,8 +497,16 @@ def maybe_auto_swap(
     session: requests.Session,
     spot_open_changes: list[dict],
     current: dict[str, dict],
+    choosed: dict[str, dict] | None = None,
 ) -> list[dict]:
-    """每组只选择当前空闲目标中优先级最高的一项执行升级。
+    """每组按优先级从高到低,对第一个不冲突的空位目标执行一次升级。
+
+    choosed 为本轮使用的已选 {jxb_id: row}(实时结果或沿用的记录):
+      - 持有班 = 组内已选中优先级最高的一项;组内无已选时直接选课,不需退课;
+      - 冲突与本组外全部已选课程比较,冲突或无法判断的目标不会被选择;
+      - 换课结果就地写回 choosed,调用方据此存盘。
+    choosed=None(从未成功获取已选)时回退旧推断:持有 = 方案末项 + 换课成功记录,
+    冲突只与其他组持有班比较,组内无持有则不换课。
 
     返回 swap 操作的结果列表,可作为额外通知项。
     """
@@ -304,10 +516,13 @@ def maybe_auto_swap(
     completed: set[str] = set(sw_state.get("completed", []))
     fatal: set[str] = set(sw_state.get("fatal", []))
     fatal_groups: set[str] = set(sw_state.get("fatal_groups", []))
-    held = _held_by_group(completed)
+    if choosed is not None:
+        held = _held_from_choosed(set(choosed))
+    else:
+        held = _held_by_group(completed)
     results = []
 
-    # 同组可能同时有多个班空出。先分组,再只处理优先级最高的目标。
+    # 同组可能同时有多个班空出。先分组,再按优先级从高到低逐个判定冲突。
     candidates: dict[str, list[dict]] = {}
     for c in spot_open_changes:
         target_id = c.get("jxb_id")
@@ -322,65 +537,99 @@ def maybe_auto_swap(
             continue
         ids = config.PRIORITY_GROUPS[group]["priority"]
         current_held = held.get(group)
-        if current_held not in ids or ids.index(target_id) >= ids.index(current_held):
-            log.info("[swap] %s 不高于当前持有 %s,跳过", target_id, current_held)
-            continue
-        conflict_group, conflict_detail, schedule_unknown = _conflict_with_other_groups(
-            current, group, target_id, held
-        )
-        if conflict_group:
-            log.info("[swap] %s 与 %s 组当前持有课程时间冲突(%s),跳过",
-                     target_id, conflict_group, conflict_detail)
-            results.append({
-                "kind": "conflict_skipped",
-                "jxbmc": c.get("jxbmc"), "kcmc": c.get("kcmc"),
-                "group": group, "target": target_id,
-                "conflict_group": conflict_group, "detail": conflict_detail,
-            })
-            continue
-        if schedule_unknown:
-            log.info("[swap] %s 与其他组当前持有课程的时间数据不全,保守跳过", target_id)
-            results.append({
-                "kind": "schedule_unknown_skip",
-                "jxbmc": c.get("jxbmc"), "kcmc": c.get("kcmc"),
-                "group": group, "target": target_id,
-            })
+        if current_held in ids:
+            if ids.index(target_id) >= ids.index(current_held):
+                log.info("[swap] %s 不高于当前持有 %s,跳过", target_id, current_held)
+                continue
+        elif choosed is None:
+            log.info("[swap] %s 组无法确定当前持有,跳过 %s", group, target_id)
             continue
         candidates.setdefault(group, []).append(c)
 
     for group, group_candidates in candidates.items():
         group_cfg = config.PRIORITY_GROUPS[group]
         ids = group_cfg["priority"]
-        c = min(group_candidates, key=lambda item: ids.index(item["jxb_id"]))
-        target_id = c["jxb_id"]
-        drop_id = held[group]
-        is_pe = group_cfg.get("is_pe", False)
-        log.info("[swap] 触发: group=%s target=%s drop=%s is_pe=%s dry=%s",
-                 group, target_id, drop_id, is_pe, config.AUTO_SWAP_DRY_RUN)
-        ok, status = swap_mod.drop_then_select(
-            session,
-            drop_jxb_id=drop_id,
-            select_jxb_id=target_id,
-            is_pe=is_pe,
-            dry_run=config.AUTO_SWAP_DRY_RUN,
-        )
-        results.append({
-            "kind": "swap_result",
-            "jxbmc": c.get("jxbmc"),
-            "kcmc": c.get("kcmc"),
-            "ok": ok,
-            "status": status,
-            "dry_run": config.AUTO_SWAP_DRY_RUN,
-            "group": group,
-            "target": target_id,
-            "drop": drop_id,
-        })
-        if ok and not config.AUTO_SWAP_DRY_RUN:
-            completed.add(target_id)
-            held[group] = target_id
-        elif status == "FATAL_LOST":
-            fatal.add(target_id)
-            fatal_groups.add(group)
+        for c in sorted(group_candidates, key=lambda item: ids.index(item["jxb_id"])):
+            target_id = c["jxb_id"]
+            if choosed is not None:
+                conflict_row, conflict_detail, schedule_unknown = _conflict_with_choosed(
+                    current, group, target_id, choosed
+                )
+                conflict = None if conflict_row is None else {
+                    "conflict_group": config.find_group(conflict_row["jxb_id"]),
+                    "conflict_course": _course_label(conflict_row),
+                }
+            else:
+                conflict_group, conflict_detail, schedule_unknown = _conflict_with_other_groups(
+                    current, group, target_id, held
+                )
+                conflict = None if conflict_group is None else {"conflict_group": conflict_group}
+            if conflict:
+                log.info("[swap] %s 与已选课程时间冲突(%s),不会被选择: %s",
+                         target_id, conflict_detail, conflict)
+                results.append({
+                    "kind": "conflict_skipped",
+                    "jxbmc": c.get("jxbmc"), "kcmc": c.get("kcmc"),
+                    "group": group, "target": target_id,
+                    **conflict, "detail": conflict_detail,
+                })
+                continue
+            if schedule_unknown:
+                log.info("[swap] %s 与已选课程的时间数据不全,保守跳过", target_id)
+                results.append({
+                    "kind": "schedule_unknown_skip",
+                    "jxbmc": c.get("jxbmc"), "kcmc": c.get("kcmc"),
+                    "group": group, "target": target_id,
+                })
+                continue
+
+            drop_id = held.get(group)
+            is_pe = group_cfg.get("is_pe", False)
+            log.info("[swap] 触发: group=%s target=%s drop=%s is_pe=%s dry=%s",
+                     group, target_id, drop_id, is_pe, config.AUTO_SWAP_DRY_RUN)
+            if drop_id is None:
+                # 组内无已选:直接选课,没有退课环节,失败也不会落空。
+                ok, body = swap_mod.select_course(
+                    session, target_id, is_pe=is_pe, dry_run=config.AUTO_SWAP_DRY_RUN,
+                )
+                status = "ok" if ok else "select_failed"
+                if not ok:
+                    log.warning("[swap] 直接选课失败: %s", body)
+            else:
+                ok, status = swap_mod.drop_then_select(
+                    session,
+                    drop_jxb_id=drop_id,
+                    select_jxb_id=target_id,
+                    is_pe=is_pe,
+                    dry_run=config.AUTO_SWAP_DRY_RUN,
+                )
+            results.append({
+                "kind": "swap_result",
+                "jxbmc": c.get("jxbmc"),
+                "kcmc": c.get("kcmc"),
+                "ok": ok,
+                "status": status,
+                "dry_run": config.AUTO_SWAP_DRY_RUN,
+                "group": group,
+                "target": target_id,
+                "drop": drop_id,
+            })
+            if ok and not config.AUTO_SWAP_DRY_RUN:
+                completed.add(target_id)
+                held[group] = target_id
+                if choosed is not None:
+                    if drop_id:
+                        choosed.pop(drop_id, None)
+                    choosed[target_id] = _slim_choosed(
+                        {**current.get(target_id, {}), "jxb_id": target_id}
+                    )
+            elif status == "FATAL_LOST":
+                fatal.add(target_id)
+                fatal_groups.add(group)
+                if choosed is not None and drop_id:
+                    choosed.pop(drop_id, None)
+            # 每组每轮最多执行一次换课。
+            break
     sw_state["completed"] = sorted(completed)
     sw_state["fatal"] = sorted(fatal)
     sw_state["fatal_groups"] = sorted(fatal_groups)
@@ -388,12 +637,37 @@ def maybe_auto_swap(
     return results
 
 
+def _carry_over_missing(
+    state: dict[str, dict], current: dict[str, dict], missing: set[str]
+) -> dict[str, dict]:
+    """把本轮没查到数据的课程沿用上一轮的教学班,返回补齐后的快照。
+
+    只在"整门课一个班都没返回"时兜底(接口抖动),单个班消失仍按真实变更处理。
+    """
+    if not missing or not state:
+        return current
+    carried = {
+        jxb_id: row for jxb_id, row in state.items()
+        if row.get("kch") in missing and jxb_id not in current
+    }
+    if carried:
+        log.warning("课程 %s 本轮无数据,沿用上一轮的 %d 个教学班(不覆盖快照)",
+                    ",".join(sorted(missing)), len(carried))
+    return {**current, **carried}
+
+
 def run_once(session: requests.Session, state: dict[str, dict]) -> dict[str, dict]:
-    courses = fetch_courses(session)
-    current = {c["jxb_id"]: c for c in courses}
-    log.info("本轮拉取 %d 个教学班", len(current))
-    watched = _watched_ids()
+    courses, missing = fetch_courses(session)
+    fresh = {c["jxb_id"]: c for c in courses}
+    log.info("本轮拉取 %d 个教学班", len(fresh))
+    current = _carry_over_missing(state, fresh, missing)
+    choosed, choosed_notes = resolve_choosed(session)
+    sw_state = _load_swap_state()
+    held = _held_from_choosed(set(choosed)) if choosed is not None else None
+    watched = _watched_ids(sw_state, held)
     log.info("当前监控 %d 个更高优先级教学班", len(watched))
+    if choosed is not None:
+        _log_conflict_marks(conflict_marks(current, watched, choosed), current, choosed)
     if not state:
         log.info("首轮:保存初始快照,不发普通变更通知")
         changes = []
@@ -403,11 +677,19 @@ def run_once(session: requests.Session, state: dict[str, dict]) -> dict[str, dic
         log.info("检测到 %d 条变更", len(changes))
     swap_results = []
     if config.AUTO_SWAP:
+        before = dict(choosed) if choosed is not None else None
         try:
-            swap_results = maybe_auto_swap(session, _open_targets(current, watched), current)
+            # 目标只从本轮真实抓到的数据里选:沿用上一轮的行可能已经过期,
+            # 拿它去退课再选课有换不回来的风险。
+            swap_results = maybe_auto_swap(
+                session, _open_targets(fresh, watched), current, choosed
+            )
         except Exception as e:
             log.exception("auto swap 异常: %s", e)
-    all_changes = list(changes) + swap_results
+        if choosed is not None and choosed != before:
+            # 换课改变了已选:立即改写记录,下一轮抓取失败时沿用的是换课后的状态。
+            save_choosed(choosed)
+    all_changes = choosed_notes + list(changes) + swap_results
     if all_changes:
         # 变更和自动换班结果统一通知。
         try:
@@ -421,7 +703,8 @@ def run_once(session: requests.Session, state: dict[str, dict]) -> dict[str, dic
 
 def main_loop() -> None:
     session = requests.Session()
-    login(session)
+    # 与全量抓取/换课共用同一次登录:各自 login 会互相把对方的会话顶掉(见 session_store)。
+    ensure_session(session)
     state = load_state()
     backoff = 0
     while True:
@@ -429,9 +712,9 @@ def main_loop() -> None:
             state = run_once(session, state)
             backoff = 0
         except SessionExpired as e:
-            log.info("session 失效,重新登录: %s", e)
+            log.info("session 失效,取共享会话/重新登录: %s", e)
             try:
-                login(session)
+                ensure_session(session, force=True)
             except LoginError as le:
                 log.error("重新登录失败,5 分钟后重试: %s", le)
                 time.sleep(300)
@@ -470,7 +753,7 @@ def main():
 
     if args.once:
         s = requests.Session()
-        login(s)
+        ensure_session(s)
         state = load_state()
         run_once(s, state)
     else:

@@ -158,34 +158,89 @@ def availability_text(value: str) -> str:
     return {"open": "有空位", "full": "已满", "unknown": "未知"}.get(value, "未知")
 
 
+def class_teachers(course: dict[str, Any]) -> list[tuple[str | None, str | None]]:
+    """把 jsxx("10498/郭晓莉/副研究员;08176/范军/教授")拆成 [(工号, 姓名), ...]。
+
+    选课社区的 main_teacher.code 就是这里的工号(2026-09-16 实测),按工号匹配评分
+    比按姓名可靠。
+    """
+    out: list[tuple[str | None, str | None]] = []
+    for line in split_info_lines(course.get("jsxx")):
+        parts = [part.strip() for part in str(line).split("/") if part.strip()]
+        if not parts:
+            continue
+        if len(parts) >= 2:
+            out.append((parts[0] or None, parts[1] or None))
+        else:
+            out.append((None, parts[0]))
+    return out
+
+
+def rating_for_class(record: dict[str, Any] | None,
+                     teachers: list[tuple[str | None, str | None]]) -> dict[str, Any] | None:
+    """从课程评分记录里取**这个教学班的老师**那条。
+
+    评分是按老师分的,匹配不上时绝不能拿别人的分冒充(那正是"课程对、老师不对"的
+    来源):返回 teacher_unrated,由调用方展示"本班老师暂无评价"+课程整体分作参考。
+    """
+    if not isinstance(record, dict):
+        return None
+    by_id = record.get("teachers")
+    if not isinstance(by_id, dict) or not by_id:
+        return {**record, "match": "course"}   # 旧缓存:没有按老师的数据
+    by_name = record.get("by_name") or {}
+    for tid, name in teachers:
+        if tid and tid in by_id:
+            return {**by_id[tid], "match": "teacher"}
+    for tid, name in teachers:
+        key = by_name.get(name) if name else None
+        if key and key in by_id:
+            return {**by_id[key], "match": "teacher"}
+    return {**record, "match": "teacher_unrated"}
+
+
 def normalized_rating(row: dict[str, Any]) -> dict[str, Any]:
-    record = row.get("rating")
+    course_record = row.get("rating")
     error = row.get("rating_error")
+    record = rating_for_class(course_record, class_teachers(row))
     if isinstance(record, dict):
+        match = record.get("match")
+        updated_at = (course_record or {}).get("updated_at")
         rating = record.get("rating")
-        if isinstance(rating, dict):
-            score = rating.get("score")
-            if score is None:
-                score = rating.get("avg")
-            count = rating.get("count")
-            status = "empty" if count == 0 else ("rated" if score is not None else "empty")
+        if not isinstance(rating, dict):
+            rating = {}
+        score = rating.get("score")
+        if score is None:
+            score = rating.get("avg")
+        count = rating.get("count")
+        if match == "teacher_unrated":
+            names = "、".join(name for _, name in class_teachers(row) if name) or "本班老师"
+            others = rating.get("teacher_count")
             return {
-                "status": status,
+                "status": "teacher_unrated",
                 "score": score,
                 "count": count,
-                "teacher": record.get("teacher"),
+                "teacher": None,
                 "semester": record.get("semester"),
-                "updated_at": record.get("updated_at"),
-                "message": None,
+                "updated_at": updated_at,
+                "message": (
+                    f"选课社区收录了这门课，但没有 {names} 的评价"
+                    + (f"（课程内 {others} 位老师有记录，分数为课程平均）" if others else "")
+                ),
             }
+        # count=0(零评价)与 score=0(真给了 0 分)必须区分,见 CLAUDE.md 的数据约定。
+        status = "empty" if count == 0 else ("rated" if score is not None else "empty")
         return {
-            "status": "empty",
-            "score": None,
-            "count": 0,
+            "status": status,
+            "score": score,
+            "count": count,
             "teacher": record.get("teacher"),
             "semester": record.get("semester"),
-            "updated_at": record.get("updated_at"),
-            "message": None,
+            "updated_at": updated_at,
+            "message": (
+                "这条评分按课程代码缓存，未按老师区分；重新获取一次即可按本班老师匹配"
+                if match == "course" else None
+            ),
         }
     if isinstance(error, dict):
         return {
@@ -214,6 +269,8 @@ def rating_text(row: dict[str, Any]) -> str:
         count = rating["count"]
         score = f"{float(rating['score']):.1f}"
         return f"{score} / {count}评" if count is not None else score
+    if rating["status"] == "teacher_unrated":
+        return "本班老师无评价"
     return {
         "empty": "暂无评价",
         "not_found": "未收录",
@@ -222,7 +279,19 @@ def rating_text(row: dict[str, Any]) -> str:
     }[rating["status"]]
 
 
-def held_by_group(completed: set[str]) -> dict[str, str]:
+def held_by_group(
+    completed: set[str], choosed_ids: set[str] | None = None
+) -> dict[str, str]:
+    """与 monitor 一致:有已选记录时持有 = 组内已选中优先级最高的一项(组内无已选则缺省);
+    没有已选记录才按方案末项 + 换课成功记录推断。"""
+    if choosed_ids:
+        held: dict[str, str] = {}
+        for group, group_cfg in config.PRIORITY_GROUPS.items():
+            for jxb_id in group_cfg.get("priority", []):
+                if jxb_id in choosed_ids:
+                    held[group] = jxb_id
+                    break
+        return held
     held = config.initial_held()
     for group, group_cfg in config.PRIORITY_GROUPS.items():
         completed_in_group = [
@@ -233,9 +302,11 @@ def held_by_group(completed: set[str]) -> dict[str, str]:
     return held
 
 
-def watched_ids(swap_state: dict[str, Any]) -> set[str]:
+def watched_ids(
+    swap_state: dict[str, Any], choosed_ids: set[str] | None = None
+) -> set[str]:
     completed = set(swap_state.get("completed", []))
-    held = held_by_group(completed)
+    held = held_by_group(completed, choosed_ids)
     watched = config.watched_ids(held)
     for group in swap_state.get("fatal_groups", []):
         group_cfg = config.PRIORITY_GROUPS.get(group)
@@ -381,8 +452,8 @@ class CourseModel:
 
 def build_snapshot() -> dict[str, Any]:
     model = CourseModel()
-    watched = watched_ids(model.swap_state)
-    held = held_by_group(set(model.swap_state.get("completed", [])))
+    watched = watched_ids(model.swap_state, model.choosed_ids)
+    held = held_by_group(set(model.swap_state.get("completed", [])), model.choosed_ids)
     log_lines = []
     if config.LOG_FILE.exists():
         log_lines = config.LOG_FILE.read_text("utf-8", errors="replace").splitlines()
@@ -474,17 +545,78 @@ def build_snapshot() -> dict[str, Any]:
             "student_id": user.get("xh") or "-",
             "class_name": user.get("bjmc") or "-",
             "major": user.get("zymc") or "-",
-            "term": f"{config.XKXNM}-{config.XKXQM}",
+            "term": config.term_label(config.XKXNM, config.XKXQM, config.SITE_TERM),
             "catalog_fetched_at": model.catalog.get("fetched_at"),
         },
+        "terms": term_options(),
+        "active_term": config.ACTIVE_TERM,
+        "site_term": site_term_info(),
         "groups": groups,
         "courses": courses,
+        "choosed": [
+            {
+                "jxb_id": row["jxb_id"],
+                "title": course_title({**row, **model.rows_by_id.get(row["jxb_id"], {})}),
+                "class_name": class_suffix({**row, **model.rows_by_id.get(row["jxb_id"], {})}),
+                "sksj": row.get("sksj"),
+                "group": model.group_of(row["jxb_id"]),
+            }
+            for row in model.catalog.get("choosed", [])
+            if isinstance(row, dict) and row.get("jxb_id")
+        ],
+        "choosed_at": model.catalog.get("choosed_at"),
         "state_rows": sorted(state_rows, key=lambda row: (not row["watched"], row["title"])),
         "swap_state": model.swap_state,
         "swap_history": swap_records[:80],
         "logs": [f"[changes] {line}" for line in log_lines[-300:]],
         "categories": sorted({row.get("category") or "-" for row in courses}),
     }
+
+
+def term_options() -> list[dict[str, Any]]:
+    """学期切换下拉框:已有配置/状态目录的学期 + 当前学期 + 网站当前学期。"""
+    site = config.SITE_TERM
+    keys = config.known_terms()
+    if site.get("xkxnm") and site.get("xkxqm"):
+        site_key = config.term_key(site["xkxnm"], site["xkxqm"])
+        if site_key not in keys:
+            keys.insert(0, site_key)
+    options = []
+    for key in keys:
+        xkxnm, _, xkxqm = key.partition("-")
+        entry = config.term_settings(config.USER_SETTINGS, key)
+        catalog = read_json(config.term_dir(key) / "catalog.json", {})
+        options.append({
+            "key": key,
+            "xkxnm": xkxnm,
+            "xkxqm": xkxqm,
+            "label": config.term_label(xkxnm, xkxqm, site),
+            "active": key == config.ACTIVE_TERM,
+            "group_count": len(entry["priority_groups"]),
+            "catalog_fetched_at": catalog.get("fetched_at") if isinstance(catalog, dict) else None,
+            "is_site_term": bool(site.get("xkxnm")) and key == config.term_key(site["xkxnm"], site["xkxqm"]),
+        })
+    return options
+
+
+def site_term_info() -> dict[str, Any] | None:
+    site = config.SITE_TERM
+    if not site:
+        return None
+    key = config.term_key(site["xkxnm"], site["xkxqm"]) if site.get("xkxnm") else None
+    return {
+        "key": key,
+        "label": site.get("label") or ("未开放" if not key else key),
+        "zzxk_open": bool(site.get("zzxk_open")),
+        "tjxkbkk_open": bool(site.get("tjxkbkk_open")),
+        "detected_at": site.get("detected_at"),
+        "matches_active": key == config.ACTIVE_TERM,
+    }
+
+
+def switch_term(payload: dict[str, Any]) -> dict[str, Any]:
+    key = config.set_active_term(payload.get("xkxnm", ""), payload.get("xkxqm", ""))
+    return {"ok": True, "active_term": key}
 
 
 def find_duplicate_assignments(groups: dict[str, Any]) -> dict[str, list[str]]:
@@ -505,11 +637,9 @@ def group_setup_warnings(groups: dict[str, Any], choosed_ids: set[str]) -> list[
             continue
         selected = [jxb_id for jxb_id in ids if jxb_id in choosed_ids]
         if not selected:
-            warnings.append(f"{name} 没有包含当前已选教学班")
+            warnings.append(f"{name} 没有包含当前已选教学班，将按优先级直接选择不冲突的空位")
         elif len(selected) > 1:
-            warnings.append(f"{name} 包含 {len(selected)} 个当前已选教学班，无法唯一确定当前持有")
-        elif ids[-1] not in selected:
-            warnings.append(f"{name} 的最后一项不是当前已选教学班")
+            warnings.append(f"{name} 包含 {len(selected)} 个当前已选教学班，将以优先级最高的一个作为当前持有")
     return warnings
 
 
@@ -654,6 +784,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("set-auto-swap")
     sub.add_parser("complete-onboarding")
     sub.add_parser("test-email")
+    sub.add_parser("switch-term")
     args = parser.parse_args(argv)
     try:
         if args.cmd == "snapshot":
@@ -668,6 +799,8 @@ def main(argv: list[str] | None = None) -> int:
             emit(complete_onboarding())
         elif args.cmd == "test-email":
             emit(test_email())
+        elif args.cmd == "switch-term":
+            emit(switch_term(read_payload()))
         return 0
     except Exception as exc:
         emit({"ok": False, "error": str(exc)})
