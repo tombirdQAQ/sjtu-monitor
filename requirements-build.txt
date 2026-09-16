@@ -1,4 +1,10 @@
 # 仅打包独立发行版时需要(冻结 Python 后端为 sjtu-backend sidecar)。
 # 运行期依赖见 requirements.txt;此文件不含在运行时环境中。
 -r requirements.txt
-pyinstaller>=6.6
+# 发行构建锁定打包链的版本。依赖不锁时 v0.6.0 构建自动升到 onnxruntime 1.30.0 +
+# PyInstaller 6.22.3,Windows 上 PyInstaller 分析阶段导入 onnxruntime.quantization
+# 直接崩溃(0xC0000005)。以下为 v0.5.2 最后一次成功发布(2026-08-14)实际安装的版本,
+# 升级前请先用 Release 工作流的 workflow_dispatch 验证 Windows 与 macOS 都能打包。
+pyinstaller==6.22.0
+pyinstaller-hooks-contrib==2026.6
+onnxruntime==1.28.0

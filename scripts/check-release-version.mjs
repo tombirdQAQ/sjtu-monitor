@@ -42,4 +42,15 @@ if (new Set(versions.map(([, value]) => value)).size !== 1) {
 }
 
 const version = versions[0][1];
+
+// 标签发布时版本号必须与标签一致:v0.6.0 标签曾打在版本仍为 0.5.2 的提交上,
+// 安装包会自报 0.5.2,MSIX 版本也会与上一版重复而被商店拒收。
+if (process.env.GITHUB_REF_TYPE === "tag") {
+  const tag = process.env.GITHUB_REF_NAME ?? "";
+  if (tag !== `v${version}`) {
+    console.error(`标签 ${tag} 与应用版本 ${version} 不一致，请先把三处版本号改为 ${tag.replace(/^v/, "")} 再打标签。`);
+    process.exit(1);
+  }
+}
+
 console.log(`Release version verified: ${version}; MSIX version: ${version}.0`);
