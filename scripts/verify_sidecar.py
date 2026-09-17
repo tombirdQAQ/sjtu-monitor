@@ -12,6 +12,8 @@ import tempfile
 
 
 def main() -> int:
+    # CI 的 Windows 控制台默认 cp1252,打印中文会失败
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     exe = sys.argv[1]
     check = subprocess.run([exe, "selfcheck"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
     text = check.stdout.decode("utf-8", "replace")
