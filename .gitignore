@@ -48,3 +48,5 @@ session.lock
 ng/macos/.build/
 ng/windows/**/bin/
 ng/windows/**/obj/
+ng/macos/.swiftpm/
+ng/macos/build/

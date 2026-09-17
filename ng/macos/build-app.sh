@@ -13,7 +13,13 @@ CONFIG="${1:-release}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 APP_NAME="交我选"
-BUNDLE_ID="com.sj-tu.sjtu-monitor.ng"
+# 发行版用独立 bundle id:与旧版 Tauri 应用(com.sj-tu.sjtu-monitor)并存时系统不会把两者混为一个应用;
+# 数据目录由 BackendLocator 固定为 Application Support/com.sj-tu.sjtu-monitor,与 bundle id 无关,照常沿用。
+if [[ "$CONFIG" == "release" ]]; then
+    BUNDLE_ID="com.sj-tu.jiaowoxuan"
+else
+    BUNDLE_ID="com.sj-tu.jiaowoxuan.dev"
+fi
 VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$REPO/package.json")"
 
 cd "$HERE"
@@ -53,9 +59,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-SIDECAR="$REPO/src-tauri/resources/sjtu-backend"
+SIDECAR="${SJTU_BACKEND_DIR:-$REPO/src-tauri/resources/sjtu-backend}"
 if [[ -x "$SIDECAR/sjtu-backend" ]]; then
     cp -R "$SIDECAR" "$APP/Contents/Resources/sjtu-backend"
+    # 去掉 PyInstaller 产物里可能继承的隔离属性,避免签名后仍被 Gatekeeper 拦截内部 dylib
+    xattr -cr "$APP/Contents/Resources/sjtu-backend" 2>/dev/null || true
     echo "已内置后端: $SIDECAR"
 else
     echo "未找到冻结后端,.app 将使用源码后端(conda 环境 sjtu-monitor)"

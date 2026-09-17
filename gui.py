@@ -2,8 +2,8 @@
 
 Run this from the configured conda environment:
 
-    python gui.py          # Tauri + React 界面(当前稳定版)
-    python gui.py --ng     # ng 原生客户端 beta(macOS: SwiftUI,Windows: WinUI 3)
+    python gui.py           # 原生客户端(macOS: SwiftUI,Windows: WinUI 3)
+    python gui.py --tauri   # 旧版 Tauri + React 界面(已停止发布,仅供开发对照)
 
 The verified backend remains Python. This launcher tells the desktop shell which
 Python executable to use for gui_backend.py / ng_service.py, monitor.py, and bootstrap.py.
@@ -85,9 +85,9 @@ def run_ng() -> int:
 
 
 def main() -> int:
-    if "--ng" in sys.argv[1:]:
-        return run_ng()
-    return run_tauri()
+    if "--tauri" in sys.argv[1:]:
+        return run_tauri()
+    return run_ng()
 
 
 if __name__ == "__main__":

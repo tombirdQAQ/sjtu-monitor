@@ -93,7 +93,7 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 5. **收尾**：通知改由原生客户端负责（`monitor.py` 在 ng 模式下只输出结构化事件），菜单栏/托盘快捷操作。
 
 ## 开发与验证（macOS）
-- 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py --ng`（会先构建 debug 版 `.app`，再以源码后端启动）。
+- 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py`（会先构建 debug 版 `.app`，再以源码后端启动）。
 - 构建：`ng/macos/build-app.sh [debug|release]`，产物为 `ng/macos/build/交我选.app`。
 - 测试：`cd ng/macos && swift test`（包含一个真正启动 `ng_service.py` 的端到端用例）；Python 侧运行 `python -m unittest test_ng_service`。
 - 界面：macOS 26+ 使用 Liquid Glass（`glassEffect`、`GlassEffectContainer`、`.glass`/`.glassProminent` 按钮），macOS 14/15 回落到 Material，兼容层在 `Views/Glass.swift`。
@@ -104,7 +104,7 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 - 验证真实数据能否解码：先把 `snapshot` 的输出存成 JSON，再用 `NG_SNAPSHOT_JSON=<该文件> swift test --filter RealSnapshotTests`。
 
 ## 开发与验证（Windows）
-- 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py --ng`，内部执行 `dotnet run`，按本机架构自动选 ARM64 或 x64。需要 .NET SDK 10，不需要 Visual Studio。
+- 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py`，内部执行 `dotnet run`，按本机架构自动选 ARM64 或 x64。需要 .NET SDK 10，不需要 Visual Studio。
 - 构建：`dotnet build ng/windows/JiaoWoXuan/JiaoWoXuan.csproj -p:Platform=ARM64 -r win-arm64`（x64 机器把 ARM64 换成 x64）。
 - 测试：`dotnet test ng/windows/JiaoWoXuan.Core.Tests`。设置 `SJTU_MONITOR_PYTHON` 后，端到端用例会真正启动 `ng_service.py`，驱动 `AppStore` 完成"加课 → 冲突提示 → 保存"。
 - 结构：
@@ -116,3 +116,13 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
   - **必须保留 `app.manifest` 并声明 `PerMonitorV2`**：去掉后非打包应用在高 DPI 屏上会按 96 DPI 渲染再由系统拉伸，整体发虚。（早先在 SSH 会话里看到的 `Microsoft.UI.Input.dll` 崩溃与清单无关，见下条。）
   - 通过 SSH/WMI 在非交互会话里启动 WinUI 窗口会在构造 `Window` 时 fail-fast，任何 WinUI 程序都一样，不代表程序有问题。GUI 只能在桌面会话里验证；这台机器上的交互式计划任务也不会执行，需要本人双击桌面快捷方式启动。
 - 诊断：启动面包屑写在 `%LOCALAPPDATA%\sjtu-monitor-ng\startup.log`，托管异常写在同目录的 `crash.log`。
+
+## 发布（1.0.0 起）
+- 推送 `vX.Y.Z` 标签触发 `.github/workflows/release.yml`，生成草稿 Release；`workflow_dispatch` 可只构建、不发布。
+- 版本号需在 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`ng/windows/Directory.Build.props` 保持一致，由 `scripts/check-release-version.mjs` 校验。
+- Windows：
+  - `packaging/windows/publish.ps1` 发布自包含的 WinUI 应用，并放入 `sjtu-backend`；
+  - `packaging/windows/installer.iss` 生成 x64 / ARM64 安装程序；
+  - `packaging/build-msix.ps1` 生成 Microsoft Store 用的 msixbundle。
+- macOS：`ng/macos/package-dmg.sh` 生成 DMG（内置 `sjtu-backend`；发行版 bundle id 为 `com.sj-tu.jiaowoxuan`，开发构建为 `com.sj-tu.jiaowoxuan.dev`，与旧版 Tauri 应用区分；数据目录不变）。
+- 演示模式：`ng_demo.py` 提供离线示例数据；`demo.enter` / `demo.exit` 切换。演示模式下 `ng_service` 拒绝 `DEMO_BLOCKED_METHODS` 中的方法，方案保存只作用于内存。

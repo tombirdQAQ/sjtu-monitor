@@ -18,8 +18,12 @@ if (!cargoMatch) {
   process.exit(1);
 }
 
+const propsMatch = readFileSync(join(root, "ng/windows/Directory.Build.props"), "utf8")
+  .match(/<Version>([^<]+)<\/Version>/);
+
 const versions = [
   ["package.json", readJson("package.json").version],
+  ["ng/windows/Directory.Build.props", propsMatch?.[1]],
   ["tauri.conf.json", readJson("src-tauri/tauri.conf.json").version],
   ["Cargo.toml", cargoMatch[1]],
 ];

@@ -54,6 +54,9 @@ if _WINDOWS:
     except Exception:
         pass
 
+# 版本号随包携带,ng_service 的 hello 据此报告版本。
+datas += [("package.json", ".")]
+
 a = Analysis(
     ["backend_entry.py"],
     pathex=[],

@@ -1,6 +1,6 @@
 # Microsoft Store 发布说明
 
-本项目通过 MSIX 提交 Microsoft Store，同时保留 Tauri 生成的 MSI/NSIS 供 GitHub Release 直装。
+本项目通过 MSIX bundle（x64 + ARM64，WinUI 3 原生客户端）提交 Microsoft Store；GitHub Release 另提供 Inno Setup 独立安装程序供直装。
 
 ## Store 身份（不可修改）
 
@@ -32,7 +32,7 @@
 
 ## 应对“无法测试 / 需要测试账号”退回
 
-Microsoft 认证要求审核人员能在无校园网、无 JAccount 的情况下体验主要功能。为此应用内置**演示模式**：首屏“连接 JAccount”步骤下方有“以演示模式预览”按钮，点击后无需登录即进入完整工作台，加载示例课程/方案/评分/换课记录，所有联网与写入操作均被禁用（顶部显示“演示模式”横幅，可随时“退出演示”）。演示数据全部离线打包，不依赖 i.sjtu.edu.cn 或校园网。
+Microsoft 认证要求审核人员能在无校园网、无 JAccount 的情况下体验主要功能。为此应用内置**演示模式**：首屏“连接 JAccount”步骤左下角有“以演示模式预览”按钮，点击后无需登录即进入完整工作台，加载示例课程/方案/评分/换课记录，所有联网与写入操作均被禁用（顶部显示“演示模式”横幅，可随时“退出演示”）。演示数据全部离线打包，不依赖 i.sjtu.edu.cn 或校园网。
 
 ### Notes for Certification（提交时填入 Submission Options → Notes for Certification）
 
@@ -72,11 +72,14 @@ data, no account needed. Not an official SJTU product.
 
 ## 本地打包
 
-先构建含 sidecar 的 Tauri Release，再执行：
+先冻结后端并发布两个架构的应用，再打包 msixbundle：
 
 ```powershell
 node scripts/check-release-version.mjs
-pwsh -File packaging/build-msix.ps1 -Version 0.5.1.0 -CertificatePath .\store-signing.pfx -CertificatePassword '<password>'
+python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
+pwsh -File packaging/windows/publish.ps1 -Architecture x64
+pwsh -File packaging/windows/publish.ps1 -Architecture arm64
+pwsh -File packaging/build-msix.ps1 -Version 1.0.0.0 -CertificatePath .\store-signing.pfx -CertificatePassword '<password>'
 ```
 
-只检查 MSIX 结构、尚未取得证书时，可临时追加 `-SkipSign`；该产物不能用于安装、认证或提交。GitHub 的手动工作流会生成这种结构检查包；标签发布则会强制要求签名。
+提交 Partner Center 时上传 GitHub 草稿 Release 中的 `JiaoWoXuan-<版本>-store.msixbundle`。

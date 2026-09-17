@@ -5,13 +5,21 @@
 ## 项目简介
 本项目主要实现监控上海交通大学 `i.sjtu.edu.cn` 推荐选课页面中的指定教学班。人数或容量变化时，程序会写入日志，并通过系统桌面通知和可选的 SMTP 邮件告警。
 
+## 下载安装
+
+普通用户直接在 [Releases](https://github.com/tombirdQAQ/sjtu-monitor/releases) 下载：
+
+- Windows：`JiaoWoXuan-<版本>-windows-x64-setup.exe`（ARM64 设备选 `-arm64-setup.exe`），也可在 Microsoft Store 搜索“交我选”；
+- macOS（Apple Silicon，macOS 14+）：`JiaoWoXuan-<版本>-macos-arm64.dmg`。
+
+首次启动会引导保存 JAccount 并同步课程；非交大用户可点击“以演示模式预览”，用示例数据体验全部界面。以下内容面向从源码运行与开发。
+
 ## 环境要求
 
 - Python 3.10 或更高版本（**macOS 需要 3.11+**，见下）
 - Windows 10/11、macOS 14+（Apple Silicon）或 Linux（Linux 桌面通知需要系统提供 `notify-send`）
-- Node.js 20 或更高版本（Tauri/React 前端）
-- Rust stable 工具链（Tauri 桌面壳）
-- macOS 还需 Xcode Command Line Tools（`xcode-select --install`）
+- 图形界面（原生客户端）：Windows 需要 .NET SDK 10；macOS 需要 Xcode 26（Liquid Glass 界面依赖 macOS 26 SDK，应用本身支持 macOS 14+）
+- 旧版 Tauri 界面（`python gui.py --tauri`，已停止发布）另需 Node.js 20+ 与 Rust stable
 - 可正常访问交我办与 jAccount
 
 ### 关于 macOS
@@ -153,13 +161,9 @@ python monitor.py --debug
 python gui.py
 ```
 
-`gui.py` 现在是 Tauri 桌面前端的兼容启动器。它会把当前 conda 环境中的 Python 解释器传给 Tauri/Rust 桥接层，再由桥接层调用 `gui_backend.py`、`monitor.py` 和 `bootstrap.py`。开发模式也可直接运行：
+`gui.py` 默认启动原生客户端：macOS 为 SwiftUI（`ng/macos`，会先构建 debug 版 `.app`），Windows 为 WinUI 3（`ng/windows`，通过 `dotnet run`）。两者都通过常驻的 `ng_service.py` 调用 Python 后端，协议见 [`ng/DESIGN.md`](ng/DESIGN.md)。`python gui.py --tauri` 仍可启动旧版 Tauri 界面。
 
-```powershell
-npm run tauri dev
-```
-
-Tauri/React 前端支持运行监控、查看课程快照、换课记录与合并日志，并通过“课程目录 → 选课方案 → 优先级”流程配置教学班。课程目录只保存和显示空位状态；教学班加入方案后才异步查询人数与容量，结果写入 `seat_details.json`，不会改写监控基线 `state.json`。
+图形界面支持运行监控、查看课程快照、换课记录与合并日志，并通过“课程目录 → 选课方案 → 优先级”流程配置教学班。课程目录只保存和显示空位状态；教学班加入方案后才异步查询人数与容量，结果写入 `seat_details.json`，不会改写监控基线 `state.json`。
 
 Windows 发行版首次启动会引导保存 JAccount、由用户显式触发课程同步，再进入课程方案页。发行包不内置测试课程、选课方案或运行缓存；0.x 内测数据只在首次正式初始化时清理一次，后续升级保留用户数据。
 
@@ -208,20 +212,21 @@ C:\path\to\sjtu-monitor\.venv\Scripts\pythonw.exe C:\path\to\sjtu-monitor\monito
 
 将“起始于”设置为项目目录，便于定位日志和状态文件。
 
-## 前端开发与验证
+## 客户端开发与验证
 
-Tauri 前端由 React + TypeScript 实现，Python 后端业务规则仍由 `monitor.py`、`swap.py`、`bootstrap.py`、`config.py` 和 `gui_backend.py` 负责。不要在前端重新实现自动换课决策。
+原生客户端只负责展示与交互；时间冲突、持有推断、评分匹配、日志解析等规则统一在 Python（`ng_logic.py` 等）实现，不要在客户端重新实现自动换课决策。
 
 常用离线检查：
 
 ```powershell
-python -m py_compile config.py monitor.py swap.py bootstrap.py course_plus.py gui_backend.py gui.py
-python -m unittest -v test_gui_logic.py test_gui_responsive.py
-npm run typecheck
-npm run build
+python -m unittest -v test_gui_logic.py test_gui_responsive.py test_ng_service.py
+cd ng/macos && swift test                              # macOS
+dotnet test ng/windows/JiaoWoXuan.Core.Tests           # Windows
 ```
 
-`npm run tauri dev` 会启动本地桌面窗口。涉及 `i.sjtu.edu.cn` 或 `course.sjtu.plus` 的按钮仍会调用真实外部接口，开发或验证时不要擅自点击联网刷新。
+发布流程见 [`ng/DESIGN.md`](ng/DESIGN.md) 的“发布”一节。旧版 Tauri 前端的检查（`npm run typecheck`、`npm run build`）仍保留在 CI 中。
+
+`python gui.py` 会启动本地桌面窗口。涉及 `i.sjtu.edu.cn` 或 `course.sjtu.plus` 的按钮仍会调用真实外部接口，开发或验证时不要擅自点击联网刷新。
 
 ### 已知问题：macOS 26/27 测试版无法本地打包
 
@@ -243,7 +248,7 @@ error[E0463]: can't find crate for `darling_macro`
 已验证**无效**的绕过方式：`-j 1` 串行构建、`-C strip=none`、`-Wl,-ld_classic`
 经典链接器、`build-override` 降低 proc-macro 优化级别。
 
-**debug 构建不受影响**，`npm run tauri dev` / `python gui.py` 完全正常，日常开发无碍。
+**debug 构建不受影响**，`npm run tauri dev` / `python gui.py --tauri` 完全正常，日常开发无碍。
 需要产出安装包时请走 CI（Release 工作流的 `macos-15` 运行器为正式版系统，未观察到此问题），
 或在正式版 macOS 上构建。CI 中未加入任何绕过参数。
 

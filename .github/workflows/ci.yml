@@ -127,7 +127,8 @@ jobs:
   # ng 原生客户端 beta:macOS(SwiftUI)与 Windows(WinUI 3)。两者的端到端单测都会真正
   # 启动 ng_service.py,因此先装好 Python 依赖,并通过 SJTU_MONITOR_PYTHON 指定解释器。
   ng-macos:
-    runs-on: macos-15
+    # Liquid Glass 等界面需要 macOS 26 SDK(Xcode 26)。
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
