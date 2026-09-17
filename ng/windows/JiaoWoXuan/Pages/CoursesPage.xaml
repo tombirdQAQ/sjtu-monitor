@@ -46,8 +46,19 @@
             <ComboBox x:Name="CategoryBox" Grid.Column="1" MinWidth="130" SelectionChanged="OnFilterChanged" />
             <ToggleButton x:Name="OnlyOpenToggle" Grid.Column="3" Content="有空位" Click="OnFilterToggled" />
             <ToggleButton x:Name="OnlyUnassignedToggle" Grid.Column="4" Content="未分配" Click="OnFilterToggled" />
+            <ToggleButton x:Name="MultiSelectToggle" Grid.Column="5" HorizontalAlignment="Left" Click="OnMultiSelectToggled"
+                          ToolTipService.ToolTip="进入多选模式：点击即可勾选多门课程，再批量加入方案">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE762;" FontSize="14" />
+                    <TextBlock Text="多选" />
+                </StackPanel>
+            </ToggleButton>
             <TextBlock x:Name="CountText" Grid.Column="6" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
-            <DropDownButton Grid.Column="7" Content="同步">
+            <DropDownButton Grid.Column="7">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                    <TextBlock Text="同步" />
+                </StackPanel>
                 <DropDownButton.Flyout>
                     <MenuFlyout>
                         <MenuFlyoutItem x:Name="SyncCatalogItem" Text="获取全量课程" Click="OnSyncCatalog" />
@@ -58,7 +69,10 @@
                 </DropDownButton.Flyout>
             </DropDownButton>
             <ToggleButton x:Name="InspectorToggle" Grid.Column="8" IsChecked="True" ToolTipService.ToolTip="显示或隐藏课程详情" Click="OnInspectorToggled">
-                <FontIcon Glyph="&#xE8A0;" FontSize="14" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE8A0;" FontSize="14" />
+                    <TextBlock Text="详情" />
+                </StackPanel>
             </ToggleButton>
         </Grid>
 
@@ -158,7 +172,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ListView x:Name="GroupTabs" SelectionMode="Single" SelectionChanged="OnGroupTabChanged"
+            <ListView x:Name="GroupTabs" SelectionMode="Single" SelectionChanged="OnGroupTabChanged" Padding="0"
                       ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
                       ScrollViewer.VerticalScrollMode="Disabled">
                 <ListView.ItemsPanel>
@@ -166,6 +180,17 @@
                         <ItemsStackPanel Orientation="Horizontal" />
                     </ItemsPanelTemplate>
                 </ListView.ItemsPanel>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                        <Setter Property="Margin" Value="0,0,8,0" />
+                        <Setter Property="Padding" Value="12,6" />
+                        <Setter Property="MinWidth" Value="140" />
+                        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                    </Style>
+                </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="pages:GroupTab">
                         <StackPanel Orientation="Horizontal" Spacing="8" Padding="2,2,6,2">
@@ -226,16 +251,21 @@
                     </ListView>
                     <TextBlock x:Name="EmptyPlan" Text="方案为空：从上方目录双击或右键加入教学班；优先级从上到下，当前持有固定在末尾"
                                Style="{StaticResource SecondaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="1" Spacing="8" Padding="14" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                    <StackPanel Grid.Column="1" Spacing="8" Padding="16" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                         <CheckBox x:Name="PeCheck" Content="体育课方案" Click="OnPeToggled" />
                         <Button Style="{StaticResource PillButton}" x:Name="AddSelectedButton" HorizontalAlignment="Stretch" Click="OnAddSelected" />
                         <MenuFlyoutSeparator />
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Button Style="{StaticResource PillButton}" x:Name="MoveUpButton" ToolTipService.ToolTip="上移" Click="OnMoveUp"><FontIcon Glyph="&#xE70E;" FontSize="14" /></Button>
-                            <Button Style="{StaticResource PillButton}" x:Name="MoveDownButton" ToolTipService.ToolTip="下移" Click="OnMoveDown"><FontIcon Glyph="&#xE70D;" FontSize="14" /></Button>
-                        </StackPanel>
-                        <Button Style="{StaticResource PillButton}" x:Name="RemoveButton" Content="移除所选" HorizontalAlignment="Stretch" Click="OnRemoveMembers" />
-                        <Button Style="{StaticResource PillButton}" Content="删除方案…" HorizontalAlignment="Stretch" Click="OnDeleteGroup" />
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                            <Button Style="{StaticResource PillButton}" x:Name="MoveUpButton" HorizontalAlignment="Stretch" ToolTipService.ToolTip="上移" Click="OnMoveUp"><FontIcon Glyph="&#xE70E;" FontSize="14" /></Button>
+                            <Button Style="{StaticResource PillButton}" x:Name="MoveDownButton" Grid.Column="1" HorizontalAlignment="Stretch" ToolTipService.ToolTip="下移" Click="OnMoveDown"><FontIcon Glyph="&#xE70D;" FontSize="14" /></Button>
+                        </Grid>
+                        <Button Style="{StaticResource PillButton}" x:Name="RemoveButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnRemoveMembers">
+                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE738;" FontSize="14" /><TextBlock Text="移除所选" /></StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource PillButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnDeleteGroup">
+                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><TextBlock Text="删除方案…" /></StackPanel>
+                        </Button>
                     </StackPanel>
                 </Grid>
                 <TextBlock x:Name="NoGroupText" Text="尚未创建选课方案：点击“新建方案”后，从上方课程目录加入教学班"

@@ -221,6 +221,17 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
 
     void OnDetectTerm(object sender, RoutedEventArgs e) => _ = store.RunAsync("detect-term");
 
+    /// 多选模式:列表显示复选框,单击即勾选/取消;退出时恢复普通的 Ctrl/Shift 多选。
+    void OnMultiSelectToggled(object sender, RoutedEventArgs e)
+    {
+        var selected = CourseList.SelectedItems.ToList();
+        CourseList.SelectionMode = MultiSelectToggle.IsChecked == true ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Extended;
+        rendering = true;
+        foreach (var item in selected) CourseList.SelectedItems.Add(item);
+        rendering = false;
+        UpdateAddButton();
+    }
+
     void OnInspectorToggled(object sender, RoutedEventArgs e)
     {
         var show = InspectorToggle.IsChecked == true;
@@ -273,7 +284,19 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
 
     void UpdateAddButton()
     {
-        AddSelectedButton.Content = $"加入所选课程 ({CourseList.SelectedItems.Count})";
+        AddSelectedButton.Content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                new FontIcon { Glyph = "\uE710", FontSize = 14 },
+                new TextBlock { Text = $"加入所选课程 ({CourseList.SelectedItems.Count})" },
+            },
+        };
+        AddSelectedButton.HorizontalContentAlignment = HorizontalAlignment.Left;
+        AddSelectedButton.Style = (Style)Application.Current.Resources[
+            CourseList.SelectedItems.Count > 0 && store.SelectedGroup is not null ? "AccentButtonStyle" : "DefaultButtonStyle"];
         AddSelectedButton.IsEnabled = CourseList.SelectedItems.Count > 0 && store.SelectedGroup is not null;
     }
 

@@ -6,7 +6,7 @@
     Background="Transparent">
 
     <ScrollViewer>
-        <StackPanel MaxWidth="{StaticResource PageMaxWidth}" HorizontalAlignment="Left" Padding="36,20,36,36" Spacing="16">
+        <StackPanel Padding="36,20,36,36" Spacing="16">
             <!-- 标题 -->
             <Grid>
                 <StackPanel Spacing="2">

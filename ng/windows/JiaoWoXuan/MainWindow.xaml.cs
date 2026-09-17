@@ -119,12 +119,16 @@ public sealed partial class MainWindow : Window
         var monitor = store.MonitorRunning;
         var once = store.Running.Contains("once");
         var stateText = monitor ? "持续监控中" : once ? "单次检查中" : "监控未运行";
+        var tone = monitor ? Tone.Success : once ? Tone.Accent : Tone.Neutral;
         MonitorStateText.Text = stateText;
-        MonitorDot.Fill = new SolidColorBrush(monitor ? Colors.SeaGreen : once ? Colors.DodgerBlue : Colors.Gray);
+        MonitorStateBackground.Fill = Ui.ToneBackground(tone);
+        MonitorStateIcon.Foreground = Ui.ToneForeground(tone);
+        MonitorStateIcon.Glyph = monitor ? "\uE9D9" : once ? "\uE895" : "\uE769";
         TermText.Text = store.Snapshot?.User.Term ?? "";
         OnceButton.IsEnabled = !once && store.IsReady;
-        MonitorButton.Content = monitor ? "停止监控" : "开始监控";
-        MonitorButton.Style = (Style)Application.Current.Resources[monitor ? "PillButton" : "AccentPillButton"];
+        MonitorButtonText.Text = monitor ? "停止监控" : "开始监控";
+        MonitorButtonIcon.Glyph = monitor ? "\uE71A" : "\uE768";
+        MonitorButton.Style = (Style)Application.Current.Resources[monitor ? "DefaultButtonStyle" : "AccentButtonStyle"];
         MonitorButton.IsEnabled = store.IsReady;
         TaskProgress.Visibility = store.Running.Except(["monitor"]).Any() ? Visibility.Visible : Visibility.Collapsed;
 
