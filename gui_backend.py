@@ -732,8 +732,6 @@ def save_settings(payload: dict[str, Any]) -> dict[str, Any]:
 
 def set_auto_swap(payload: dict[str, Any]) -> dict[str, Any]:
     dry_run = bool(payload.get("dry_run"))
-    if is_release_mode() and dry_run:
-        raise ValueError("发行版不支持演练模式")
     config.update_user_settings(
         auto_swap={
             "enabled": bool(payload.get("enabled")),

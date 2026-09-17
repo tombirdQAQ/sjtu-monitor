@@ -62,6 +62,11 @@ def main(argv: list[str] | None = None) -> int:
 
         return gui_backend.main(rest)
 
+    if stem == "ng_service":
+        import ng_service
+
+        return ng_service.main(rest)
+
     if stem in ("monitor", "bootstrap"):
         module = __import__(stem)
         # 让 argparse 看到与源码模式一致的 argv,再复用模块自身的 main。

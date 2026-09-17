@@ -43,7 +43,7 @@ jobs:
 
       # 仅运行当前保留的 Python 离线单测文件。
       - name: Unit tests
-        run: python -m unittest -v test_gui_logic.py test_gui_responsive.py test_monitor_choosed.py test_terms.py test_partial_data.py test_shared_session.py test_ratings.py
+        run: python -m unittest -v test_gui_logic.py test_gui_responsive.py test_monitor_choosed.py test_terms.py test_partial_data.py test_shared_session.py test_ratings.py test_ng_service.py
 
   # 分支规则要求的固定检查名。if: always() 保证矩阵失败时它仍然运行并如实报错,
   # 否则 job 会被跳过、必需检查永远拿不到结论。
@@ -123,3 +123,58 @@ jobs:
         run: |
           echo "rust-matrix: ${{ needs.rust-matrix.result }}"
           test "${{ needs.rust-matrix.result }}" = "success"
+
+  # ng 原生客户端 beta:macOS(SwiftUI)与 Windows(WinUI 3)。两者的端到端单测都会真正
+  # 启动 ng_service.py,因此先装好 Python 依赖,并通过 SJTU_MONITOR_PYTHON 指定解释器。
+  ng-macos:
+    # Liquid Glass 等界面需要 macOS 26 SDK(Xcode 26)。
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Swift build
+        working-directory: ng/macos
+        run: swift build
+
+      - name: Swift tests
+        working-directory: ng/macos
+        env:
+          SJTU_MONITOR_PYTHON: ${{ steps.py.outputs.python-path }}
+        run: swift test
+
+  ng-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Core tests
+        working-directory: ng/windows
+        env:
+          SJTU_MONITOR_PYTHON: ${{ steps.py.outputs.python-path }}
+        run: dotnet test JiaoWoXuan.Core.Tests/JiaoWoXuan.Core.Tests.csproj
+
+      - name: Build WinUI app
+        working-directory: ng/windows
+        run: dotnet build JiaoWoXuan/JiaoWoXuan.csproj -p:Platform=x64 -r win-x64

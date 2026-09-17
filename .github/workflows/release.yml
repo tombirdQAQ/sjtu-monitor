@@ -1,13 +1,13 @@
 name: Release
 
-# 推送 vX.Y.Z 标签时构建 Windows(MSI/NSIS/MSIX)与 macOS(DMG)独立安装包
-# (内含 PyInstaller 冻结的 Python 后端 sidecar)并创建草稿 Release;也可通过
-# workflow_dispatch 手动验证构建(不创建 Release,产物以 artifact 形式上传)。
+# 推送 vX.Y.Z 标签时构建 交我选 原生客户端并创建草稿 Release;也可 workflow_dispatch
+# 手动验证构建(不创建 Release,产物以 artifact 形式上传)。
 #
-# macOS 仅出 Apple Silicon (aarch64):ddddocr 依赖的 onnxruntime 从 1.24 起只发
-# macosx_14_0_arm64 wheel,x86_64 已停供,numpy/Pillow/opencv 也不再有 universal2,
-# 因此 Intel Mac 无法用同一套依赖构建。DMG 未做 Developer ID 签名与公证,
-# 用户首次打开需右键“打开”或 `xattr -dr com.apple.quarantine`。
+# - Windows:WinUI 3 客户端(x64 / ARM64)的 Inno Setup 独立安装程序,以及提交
+#   Microsoft Store 用的 MSIX bundle。后端 sidecar 为 x64 冻结产物,ARM64 设备经仿真运行。
+# - macOS:SwiftUI 客户端 DMG,仅 Apple Silicon。onnxruntime 自 1.24 起只发
+#   macosx_14_0_arm64 wheel,Intel Mac 无法用同一套依赖构建。未做 Developer ID 签名与公证,
+#   用户首次打开需右键“打开”或 `xattr -dr com.apple.quarantine /Applications/交我选.app`。
 on:
   push:
     tags: ['v*.*.*']
@@ -22,17 +22,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 与 ci.yml 一致:锁文件由 npm 11 生成,需 Node 24 (npm 11) 才能通过 npm ci 同步检查。
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
 
-      - name: Install node dependencies
-        run: npm ci
+      - name: Verify release version alignment
+        run: node scripts/check-release-version.mjs
 
-      # 冻结 Python 后端:setup-python 用 python.org 构建,_ctypes 等原生依赖自带,
-      # 不会遇到 conda 环境缺 libffi 的问题;spec 里的 conda 兜底逻辑在此为空操作。
+      # 冻结 Python 后端:setup-python 用 python.org 构建,_ctypes 等原生依赖自带。
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -41,111 +38,81 @@ jobs:
       - name: Install Python build dependencies
         run: python -m pip install -r requirements-build.txt
 
-      - name: Clean backend staging
-        shell: pwsh
-        run: Remove-Item -LiteralPath src-tauri/resources/sjtu-backend -Recurse -Force -ErrorAction SilentlyContinue
-
       - name: Build backend sidecar (PyInstaller)
-        run: python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath src-tauri/resources/sjtu-backend -Recurse -Force -ErrorAction SilentlyContinue
+          python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
 
-      # 离线自检:确认冻结产物能加载原生依赖，并以 UTF-8 输出中文。
+      # 离线自检:原生依赖可加载、UTF-8 中文输出、ng_service 以匿名管道正常工作(含演示模式)。
       - name: Verify sidecar
-        run: python -c "import subprocess; p=subprocess.run(['src-tauri/resources/sjtu-backend/sjtu-backend.exe', 'selfcheck'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True); text=p.stdout.decode('utf-8'); assert '中文编码验证：交我选' in text, text"
+        run: python scripts/verify_sidecar.py src-tauri/resources/sjtu-backend/sjtu-backend.exe
 
-      - name: Verify clean release resources
-        shell: pwsh
-        run: |
-          $forbidden = @('.env', 'secrets.local.json', 'state.json', 'swap_state.json', 'user_settings.json', 'catalog.json', 'zzxk_capacity.json', 'seat_details.json', 'ratings.json', 'changes.log')
-          $found = Get-ChildItem -LiteralPath src-tauri/resources/sjtu-backend -Recurse -File | Where-Object { $_.Name -in $forbidden }
-          if ($found) { throw "Runtime data was bundled: $($found.FullName -join ', ')" }
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-dotnet@v4
         with:
-          workspaces: src-tauri
+          dotnet-version: '10.0.x'
 
-      # tauri-winres 需要 rc.exe;运行器 SDK 版本不定,按实际安装版本定位并通过 RC 传入。
-      - name: Locate rc.exe
+      - name: Publish app (x64, ARM64)
         shell: pwsh
         run: |
-          if (-not $env:RC) {
-            $rc = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64\rc.exe' -ErrorAction SilentlyContinue |
-              Sort-Object FullName -Descending | Select-Object -First 1
-            if ($rc) { "RC=$($rc.FullName)" >> $env:GITHUB_ENV }
+          pwsh -File packaging/windows/publish.ps1 -Architecture x64
+          pwsh -File packaging/windows/publish.ps1 -Architecture arm64
+
+      - name: Build installers (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          foreach ($arch in 'x64', 'arm64') {
+            & $iscc "/DAppVersion=$version" "/DArch=$arch" packaging/windows/installer.iss
+            if ($LASTEXITCODE -ne 0) { throw "ISCC $arch 失败" }
           }
 
-      - name: Verify release version alignment
-        run: node scripts/check-release-version.mjs
-
-      # --config 合入 tauri.bundle.conf.json,仅在打包时加入 sidecar 资源;
-      # 基础 tauri.conf.json 不含 resources,保证 dev(python gui.py)与 ci 的 cargo check
-      # 在未构建 sidecar 时也不会因 glob 匹配不到而失败。tagName 为空时只构建、不建 Release。
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --config src-tauri/tauri.bundle.conf.json
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('交我选 {0}', github.ref_name) || '' }}
-          releaseDraft: true
-          includeUpdaterJson: false
-
-      - name: Package Microsoft Store MSIX
+      - name: Build Microsoft Store MSIX bundle
         shell: pwsh
         env:
           MSIX_CERTIFICATE_BASE64: ${{ secrets.MSIX_CERTIFICATE_BASE64 }}
           MSIX_CERTIFICATE_PASSWORD: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
           IS_TAG_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $msixVersion = "$version.0"
+          $output = "build/windows/JiaoWoXuan-$version-store.msixbundle"
           if (-not $env:MSIX_CERTIFICATE_BASE64 -or -not $env:MSIX_CERTIFICATE_PASSWORD) {
             if ($env:IS_TAG_RELEASE -eq 'true') {
-              throw "标签发布缺少 MSIX_CERTIFICATE_BASE64 或 MSIX_CERTIFICATE_PASSWORD。请按 docs/microsoft-store.md 配置与 Partner Center Publisher 匹配的 PFX。"
+              throw "标签发布缺少 MSIX_CERTIFICATE_BASE64 或 MSIX_CERTIFICATE_PASSWORD。请按 docs/microsoft-store.md 配置。"
             }
-            $version = (Get-Content package.json -Raw | ConvertFrom-Json).version + '.0'
-            pwsh -File packaging/build-msix.ps1 -Version $version -SkipSign
+            pwsh -File packaging/build-msix.ps1 -Version $msixVersion -OutputPath $output -SkipSign
             exit $LASTEXITCODE
           }
           $certificatePath = Join-Path $env:RUNNER_TEMP 'sjtu-monitor-store-signing.pfx'
           [System.IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:MSIX_CERTIFICATE_BASE64))
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version + '.0'
-          pwsh -File packaging/build-msix.ps1 -Version $version -CertificatePath $certificatePath -CertificatePassword $env:MSIX_CERTIFICATE_PASSWORD
+          pwsh -File packaging/build-msix.ps1 -Version $msixVersion -OutputPath $output `
+            -CertificatePath $certificatePath -CertificatePassword $env:MSIX_CERTIFICATE_PASSWORD
 
-      - name: Upload MSIX to draft GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.ref_name }} src-tauri/target/release/bundle/msix/*.msix --clobber
-
-      - name: Upload installers (manual run)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: windows-installers
+          name: windows
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msix/*.msix
+            build/windows/*-setup.exe
+            build/windows/*.msixbundle
+          if-no-files-found: error
 
-  # 串行跟在 Windows 之后:两个 job 都用 tauri-action 往同一个标签写草稿 Release,
-  # 并发执行会竞争创建同一个 Release。构建时间换掉这个竞态。
   build-macos:
-    needs: build-windows
-    runs-on: macos-15
+    # Liquid Glass 等界面需要 macOS 26 SDK(Xcode 26)。
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
 
-      - name: Install node dependencies
-        run: npm ci
+      - name: Verify release version alignment
+        run: node scripts/check-release-version.mjs
 
-      # macos-15 运行器是 Apple Silicon,setup-python 装的是 arm64 解释器,
-      # 与 onnxruntime 仅存的 macosx_14_0_arm64 wheel 匹配。
+      # Apple Silicon 运行器上 setup-python 装的是 arm64 解释器,与 onnxruntime 的 arm64 wheel 匹配。
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -154,56 +121,47 @@ jobs:
       - name: Install Python build dependencies
         run: python -m pip install -r requirements-build.txt
 
-      - name: Clean backend staging
-        run: rm -rf src-tauri/resources/sjtu-backend
-
       - name: Build backend sidecar (PyInstaller)
-        run: python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
+        run: |
+          rm -rf src-tauri/resources/sjtu-backend
+          python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
 
-      # 离线自检:确认冻结产物能加载 onnxruntime 原生库,并以 UTF-8 输出中文。
       - name: Verify sidecar
-        run: |
-          output=$(./src-tauri/resources/sjtu-backend/sjtu-backend selfcheck)
-          echo "$output"
-          case "$output" in
-            *"中文编码验证：交我选"*) ;;
-            *) echo "selfcheck 输出不符合预期"; exit 1 ;;
-          esac
+        run: python scripts/verify_sidecar.py src-tauri/resources/sjtu-backend/sjtu-backend
 
-      - name: Verify clean release resources
-        run: |
-          forbidden='.env secrets.local.json state.json swap_state.json user_settings.json catalog.json zzxk_capacity.json seat_details.json ratings.json changes.log'
-          status=0
-          for name in $forbidden; do
-            found=$(find src-tauri/resources/sjtu-backend -type f -name "$name")
-            if [ -n "$found" ]; then echo "Runtime data was bundled: $found"; status=1; fi
-          done
-          exit $status
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Verify release version alignment
-        run: node scripts/check-release-version.mjs
-
-      # 仅 aarch64:onnxruntime 已无 x86_64/universal2 macOS wheel,Intel Mac 构建不出来。
-      # 未配置 Developer ID,产物为未签名 DMG。
-      - uses: tauri-apps/tauri-action@v0
+      - name: Swift tests
+        working-directory: ng/macos
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --config src-tauri/tauri.bundle.conf.json --target aarch64-apple-darwin
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('交我选 {0}', github.ref_name) || '' }}
-          releaseDraft: true
-          includeUpdaterJson: false
+          SJTU_MONITOR_PYTHON: ${{ env.pythonLocation }}/bin/python
+        run: swift test
 
-      - name: Upload installers (manual run)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+      - name: Build DMG
+        run: bash ng/macos/package-dmg.sh
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: macos-installers
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          name: macos
+          path: build/macos/*.dmg
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release create "${{ github.ref_name }}" dist/* \
+            --draft \
+            --title "交我选 ${{ github.ref_name }}" \
+            --notes-file packaging/release-notes.md

@@ -1,0 +1,100 @@
+<Page
+    x:Class="JiaoWoXuan.Pages.OverviewPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:JiaoWoXuan"
+    Background="Transparent">
+
+    <ScrollViewer>
+        <StackPanel Padding="36,20,36,36" Spacing="16">
+            <!-- 标题 -->
+            <Grid>
+                <StackPanel Spacing="2">
+                    <TextBlock x:Name="UserTerm" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="UserName" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock x:Name="UserMajor" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Padding="12,5"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE823;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="GeneratedAt" Style="{StaticResource SecondaryText}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 监控状态 -->
+            <Border x:Name="MonitorCard" Style="{StaticResource CardBorder}" Padding="16">
+                <Grid ColumnSpacing="18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="56" Height="56" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <FontIcon x:Name="MonitorIcon" Glyph="&#xE9D9;" FontSize="24" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock x:Name="MonitorTitle" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock x:Name="MonitorSubtitle" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="6" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <TextBlock Text="轮询" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="IntervalText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <TextBlock Text="自动换课" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
+                            <local:StatusBadge x:Name="AutoSwapBadge" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button x:Name="OnceButton" Style="{StaticResource PillButton}" Click="OnRunOnce">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE768;" FontSize="13" />
+                                <TextBlock x:Name="OnceText" Text="单次检查" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="MonitorButton" Style="{StaticResource AccentPillButton}" Click="OnToggleMonitor">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon x:Name="MonitorButtonIcon" Glyph="&#xE704;" FontSize="13" />
+                                <TextBlock x:Name="MonitorButtonText" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 指标 -->
+            <Grid x:Name="MetricsGrid" ColumnSpacing="14" />
+
+            <Grid ColumnSpacing="18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource CardBorder}" Padding="16" VerticalAlignment="Top">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE77B;" FontSize="16" />
+                            <TextBlock Text="当前用户" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </StackPanel>
+                        <Grid x:Name="ProfileGrid" ColumnSpacing="18" RowSpacing="9" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource CardBorder}" Padding="16" VerticalAlignment="Top">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8FD;" FontSize="16" />
+                            <TextBlock Text="方案状态" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </StackPanel>
+                        <TextBlock x:Name="NoGroups" Text="尚未创建选课方案" Style="{StaticResource SecondaryText}" Visibility="Collapsed" />
+                        <StackPanel x:Name="GroupList" Spacing="8" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

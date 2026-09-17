@@ -1,0 +1,79 @@
+<Page
+    x:Class="JiaoWoXuan.Pages.OnboardingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <Border Style="{StaticResource CardBorder}" Width="600" Padding="32" Margin="24"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel Spacing="18">
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <Image Source="ms-appx:///Assets/AppIcon.ico" Width="44" Height="44" />
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="欢迎使用交我选" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock Text="完成基础设置后再创建自己的监控方案" Style="{StaticResource SecondaryText}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel x:Name="Steps" Orientation="Horizontal" Spacing="10" />
+                <MenuFlyoutSeparator />
+
+                <!-- 1. 账号 -->
+                <StackPanel x:Name="AccountStep" Spacing="12">
+                    <TextBlock Text="连接 JAccount" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="AccountHint" Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                    <TextBox x:Name="Account" Header="JAccount" />
+                    <PasswordBox x:Name="Password" Header="密码" KeyDown="OnPasswordKeyDown" />
+                    <TextBlock Text="本应用面向上海交通大学在校师生，需使用学校统一分配的 JAccount 登录（jaccount.sjtu.edu.cn）。非交大用户可点击“以演示模式预览”查看示例数据与全部界面。"
+                               Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                    <Grid>
+                        <Button x:Name="DemoButton" Click="OnDemo" ToolTipService.ToolTip="无需 JAccount 与校园网，使用离线示例数据体验全部界面">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE7B3;" FontSize="14" />
+                                <TextBlock Text="以演示模式预览" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="SaveAccountButton" Content="保存并继续" Style="{StaticResource AccentPillButton}"
+                                HorizontalAlignment="Right" Click="OnSaveAccount" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- 2. 同步 -->
+                <StackPanel x:Name="SyncStep" Spacing="12" Visibility="Collapsed">
+                    <TextBlock Text="同步课程目录" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="只有点击下方按钮后才会登录教务系统，获取用户信息、全量课程和当前已选课程。同步失败时可返回修改账号后重试，不会自动启动监控或换课。"
+                               Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                    <Border x:Name="ConsoleBorder" Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="6" Padding="10">
+                        <ItemsControl x:Name="Console">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{x:Bind}" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextTrimming="CharacterEllipsis"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                    <Grid>
+                        <Button Style="{StaticResource PillButton}" x:Name="BackButton" Content="返回修改账号" Click="OnBack" />
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+                            <ProgressRing x:Name="SyncRing" IsActive="False" Width="20" Height="20" />
+                            <Button x:Name="SyncButton" Style="{StaticResource AccentPillButton}" Click="OnSync" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 3. 完成 -->
+                <StackPanel x:Name="FinishStep" Spacing="12" Visibility="Collapsed">
+                    <TextBlock Text="创建自己的选课方案" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="进入课程工作台后，新建方案并按从高到低排列教学班，当前已选班放在末尾。"
+                               Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                    <TextBlock Text="✓ 双击或右键课程可加入当前方案&#x0a;✓ 自动换课只向更高优先级升级，不会降级&#x0a;✓ 自动换课默认关闭，需在完成方案后手动启用" />
+                    <Button x:Name="FinishButton" Content="进入课程方案" Style="{StaticResource AccentPillButton}"
+                            HorizontalAlignment="Right" Click="OnFinish" />
+                </StackPanel>
+
+                <TextBlock x:Name="StatusText" Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</Page>

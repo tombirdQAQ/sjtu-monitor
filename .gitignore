@@ -43,3 +43,10 @@ secrets.local.json
 *.swp
 session.json
 session.lock
+
+# ng 原生客户端构建产物
+ng/macos/.build/
+ng/windows/**/bin/
+ng/windows/**/obj/
+ng/macos/.swiftpm/
+ng/macos/build/
