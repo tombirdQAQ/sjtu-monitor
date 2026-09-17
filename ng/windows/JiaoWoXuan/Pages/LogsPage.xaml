@@ -19,10 +19,10 @@
                 <ColumnDefinition Width="320" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="日志" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="日志" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
             <AutoSuggestBox x:Name="QueryBox" Grid.Column="1" PlaceholderText="筛选日志内容或来源" QueryIcon="Find"
-                            CornerRadius="16" VerticalAlignment="Center" TextChanged="OnQueryChanged" />
-            <ToggleButton x:Name="FollowToggle" Grid.Column="2" IsChecked="True" CornerRadius="16" Padding="12,6">
+                            VerticalAlignment="Center" TextChanged="OnQueryChanged" />
+            <ToggleButton x:Name="FollowToggle" Grid.Column="2" IsChecked="True" Padding="12,6">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE74B;" FontSize="13" />
                     <TextBlock Text="跟随最新" />
@@ -33,7 +33,7 @@
         <!-- 级别统计卡片,兼作筛选 -->
         <Grid x:Name="LevelCards" Grid.Row="1" ColumnSpacing="12" />
 
-        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="6" CornerRadius="22">
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="6">
             <Grid>
                 <ListView x:Name="Entries" SelectionMode="None" IsItemClickEnabled="False">
                     <ListView.ItemContainerStyle>
@@ -63,7 +63,7 @@
                                     </StackPanel>
                                 </Border>
                                 <Border Grid.Column="2" CornerRadius="9" Padding="7,2" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                        BorderThickness="1" BorderBrush="{ThemeResource GlassStrokeBrush}">
+                                        BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                                     <TextBlock Text="{x:Bind Entry.Source}" FontSize="12" TextTrimming="CharacterEllipsis"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </Border>

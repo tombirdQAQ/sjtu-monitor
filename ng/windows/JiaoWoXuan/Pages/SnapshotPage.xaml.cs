@@ -13,6 +13,7 @@ public sealed partial class SnapshotPage : Microsoft.UI.Xaml.Controls.Page
     public SnapshotPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

@@ -176,3 +176,29 @@ public sealed partial class StatusBadge : ContentControl
         Content = Ui.Badge(Text ?? "", Tone);
     }
 }
+
+/// 托盘右键菜单是 Win32 弹出菜单,不跟随 WinUI 主题;通过 uxtheme 的 SetPreferredAppMode 让它支持深色。
+/// (资源管理器、记事本等系统应用同样使用这组接口。)
+public static partial class NativeTheme
+{
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", EntryPoint = "#135")]
+    static extern int SetPreferredAppMode(int mode);
+
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", EntryPoint = "#136")]
+    static extern void FlushMenuThemes();
+
+    /// theme: "system" | "light" | "dark"
+    public static void ApplyMenuTheme(string theme)
+    {
+        try
+        {
+            // 1 = AllowDark(跟随系统) 2 = ForceDark 3 = ForceLight
+            SetPreferredAppMode(theme switch { "dark" => 2, "light" => 3, _ => 1 });
+            FlushMenuThemes();
+        }
+        catch (Exception)
+        {
+            // 旧系统没有这组导出,保持默认浅色菜单即可。
+        }
+    }
+}

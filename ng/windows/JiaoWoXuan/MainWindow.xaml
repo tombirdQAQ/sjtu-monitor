@@ -11,34 +11,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 彩色氛围背景:叠在 Mica 上,给玻璃卡片提供可透出的色彩。 -->
-        <Grid Grid.RowSpan="2" IsHitTestVisible="False">
-            <Rectangle>
-                <Rectangle.Fill>
-                    <RadialGradientBrush Center="0.18,0.1" RadiusX="0.55" RadiusY="0.6" GradientOrigin="0.18,0.1">
-                        <GradientStop Color="{ThemeResource AmbientBlue}" Offset="0" />
-                        <GradientStop Color="Transparent" Offset="1" />
-                    </RadialGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-            <Rectangle>
-                <Rectangle.Fill>
-                    <RadialGradientBrush Center="0.88,0.3" RadiusX="0.5" RadiusY="0.6" GradientOrigin="0.88,0.3">
-                        <GradientStop Color="{ThemeResource AmbientPurple}" Offset="0" />
-                        <GradientStop Color="Transparent" Offset="1" />
-                    </RadialGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-            <Rectangle>
-                <Rectangle.Fill>
-                    <RadialGradientBrush Center="0.5,1" RadiusX="0.6" RadiusY="0.55" GradientOrigin="0.5,1">
-                        <GradientStop Color="{ThemeResource AmbientTeal}" Offset="0" />
-                        <GradientStop Color="Transparent" Offset="1" />
-                    </RadialGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-        </Grid>
-
         <!-- 自绘标题栏:内容延伸进标题栏,配合 Mica 背景。 -->
         <Grid x:Name="AppTitleBar" Grid.Row="0" Padding="16,0,0,0" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
@@ -48,7 +20,7 @@
                 <ColumnDefinition x:Name="CaptionButtonsColumn" Width="140" />
             </Grid.ColumnDefinitions>
             <Image Source="ms-appx:///Assets/AppIcon.ico" Width="18" Height="18" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="交我选" FontWeight="SemiBold" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="交我选" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
             <TextBlock x:Name="TitleStatus" Grid.Column="2" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
         </Grid>
 
@@ -65,7 +37,8 @@
         <Frame x:Name="OnboardingFrame" Grid.Row="1" Visibility="Collapsed" />
 
         <NavigationView x:Name="Nav" Grid.Row="1" Visibility="Collapsed"
-                        IsBackButtonVisible="Collapsed" PaneDisplayMode="Left" OpenPaneLength="220"
+                        IsBackButtonVisible="Collapsed" PaneDisplayMode="Auto" OpenPaneLength="260"
+                        PaneOpening="OnPaneOpening" PaneClosing="OnPaneClosing" DisplayModeChanged="OnDisplayModeChanged"
                         IsSettingsVisible="True" SelectionChanged="OnNavigationChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItemHeader Content="工作台" />
@@ -88,8 +61,7 @@
             </NavigationView.MenuItems>
 
             <NavigationView.PaneFooter>
-                <StackPanel Margin="10,6,10,10" Padding="12" Spacing="10" Background="{ThemeResource GlassFillBrush}"
-                            BorderBrush="{ThemeResource GlassStrokeBrush}" BorderThickness="1" CornerRadius="14">
+                <StackPanel x:Name="PaneFooterPanel" Padding="16,8,16,12" Spacing="10">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Ellipse x:Name="MonitorDot" Width="8" Height="8" VerticalAlignment="Center" />
                         <StackPanel>
@@ -115,7 +87,7 @@
             </Grid>
         </NavigationView>
 
-        <tb:TaskbarIcon x:Name="TrayIcon" Grid.Row="1" Visibility="Visible" ToolTipText="交我选"
+        <tb:TaskbarIcon x:Name="TrayIcon" ContextMenuMode="PopupMenu" Grid.Row="1" Visibility="Visible" ToolTipText="交我选"
                         IconSource="ms-appx:///Assets/AppIcon.ico" NoLeftClickDelay="True"
                         LeftClickCommand="{x:Bind ShowWindowCommand}">
             <tb:TaskbarIcon.ContextFlyout>

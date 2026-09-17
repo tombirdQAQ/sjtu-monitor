@@ -15,6 +15,7 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
     public OverviewPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -47,9 +48,8 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
         MonitorSubtitle.Text = monitor ? "正在按配置轮询课程余量" : once ? "正在执行一次本地监控流程" : "可以启动单次检查或持续监控";
         MonitorIcon.Glyph = monitor ? "" : "";
         MonitorIcon.Foreground = Ui.ToneForeground(monitor ? Tone.Success : once ? Tone.Accent : Tone.Neutral);
-        MonitorCard.Background = monitor
-            ? new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 0x2E, 0xB8, 0x5C))
-            : (Brush)Application.Current.Resources["GlassFillBrush"];
+        MonitorCard.Background = (Brush)Application.Current.Resources[
+            monitor ? "SystemFillColorSuccessBackgroundBrush" : "CardBackgroundFillColorDefaultBrush"];
         IntervalText.Text = snapshot.Metrics.Interval;
         AutoSwapBadge.Text = Labels.Of(snapshot.Metrics.AutoSwap);
         AutoSwapBadge.Tone = ToneOf(snapshot.Metrics.AutoSwap);
@@ -90,13 +90,12 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
             MetricsGrid.ColumnDefinitions.Add(new ColumnDefinition());
             var icon = new FontIcon { Glyph = glyph, FontSize = 15, HorizontalAlignment = HorizontalAlignment.Left };
             icon.Foreground = Ui.ToneForeground(tone == Tone.Neutral ? Tone.Neutral : tone);
-            var value = new TextBlock { Text = valueText, FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+            var value = new TextBlock { Text = valueText, Style = Res("SubtitleTextBlockStyle") };
             if (tone != Tone.Neutral) value.Foreground = Ui.ToneForeground(tone);
             var card = new Border
             {
                 Style = Res("CardBorder"),
                 Padding = new Thickness(16, 14, 16, 14),
-                Background = tone == Tone.Neutral ? (Brush)Application.Current.Resources["GlassFillBrush"] : Ui.ToneBackground(tone),
                 Child = new StackPanel
                 {
                     Spacing = 6,
@@ -171,7 +170,7 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
             grid.Children.Add(chevron);
 
             var name = group.Name;
-            var button = new Button { Content = grid, Style = Res("GlassCardButton") };
+            var button = new Button { Content = grid, Style = Res("CardButton") };
             button.Click += (_, _) =>
             {
                 store.SelectedGroup = name;

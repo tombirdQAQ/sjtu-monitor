@@ -35,6 +35,7 @@ public sealed partial class LogsPage : Microsoft.UI.Xaml.Controls.Page
     public LogsPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
     }
 
     public static string Glyph(LogLevel? level) => level switch
@@ -95,7 +96,6 @@ public sealed partial class LogsPage : Microsoft.UI.Xaml.Controls.Page
             {
                 Width = 32,
                 Height = 32,
-                CornerRadius = new CornerRadius(16),
                 Background = selected ? Ui.ToneForeground(tone) : Ui.ToneBackground(tone),
                 Child = new FontIcon
                 {
@@ -117,8 +117,7 @@ public sealed partial class LogsPage : Microsoft.UI.Xaml.Controls.Page
             var button = new Button
             {
                 Content = content,
-                Style = (Style)Application.Current.Resources["GlassCardButton"],
-                CornerRadius = new CornerRadius(16),
+                Style = (Style)Application.Current.Resources["CardButton"],
                 Padding = new Thickness(12, 9, 12, 9),
             };
             if (selected)

@@ -24,6 +24,7 @@ public sealed partial class SwapPage : Microsoft.UI.Xaml.Controls.Page
     public SwapPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

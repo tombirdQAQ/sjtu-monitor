@@ -15,6 +15,7 @@ public sealed partial class SettingsPage : Microsoft.UI.Xaml.Controls.Page
     public SettingsPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -99,6 +100,7 @@ public sealed partial class SettingsPage : Microsoft.UI.Xaml.Controls.Page
         if (rendering || ThemeBox.SelectedIndex < 0) return;
         UiSettings.Theme = Themes[ThemeBox.SelectedIndex];
         if (App.MainWindow?.Content is FrameworkElement root) UiSettings.ApplyTheme(root);
+        NativeTheme.ApplyMenuTheme(UiSettings.Theme);
     }
 
     void OnDebugToggled(object sender, RoutedEventArgs e)

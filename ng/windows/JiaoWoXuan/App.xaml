@@ -8,37 +8,6 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 玻璃风格:应用内 Acrylic 叠在 Mica + 彩色氛围背景上,对应 macOS 版的 Liquid Glass。 -->
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light">
-                    <AcrylicBrush x:Key="GlassFillBrush" TintColor="#FFFFFF" TintOpacity="0.55" TintLuminosityOpacity="0.72" FallbackColor="#F2F7F8FC" />
-                    <AcrylicBrush x:Key="GlassStrongFillBrush" TintColor="#FFFFFF" TintOpacity="0.7" TintLuminosityOpacity="0.85" FallbackColor="#FAFFFFFF" />
-                    <SolidColorBrush x:Key="GlassStrokeBrush" Color="#1F000000" />
-                    <SolidColorBrush x:Key="GlassHoverBrush" Color="#0F000000" />
-                    <Color x:Key="AmbientBlue">#554C8DFF</Color>
-                    <Color x:Key="AmbientPurple">#44B06CFF</Color>
-                    <Color x:Key="AmbientTeal">#3C35C2C1</Color>
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <AcrylicBrush x:Key="GlassFillBrush" TintColor="#23263A" TintOpacity="0.45" TintLuminosityOpacity="0.55" FallbackColor="#E0202333" />
-                    <AcrylicBrush x:Key="GlassStrongFillBrush" TintColor="#2A2E44" TintOpacity="0.6" TintLuminosityOpacity="0.7" FallbackColor="#F0262A3C" />
-                    <SolidColorBrush x:Key="GlassStrokeBrush" Color="#26FFFFFF" />
-                    <SolidColorBrush x:Key="GlassHoverBrush" Color="#14FFFFFF" />
-                    <Color x:Key="AmbientBlue">#664C8DFF</Color>
-                    <Color x:Key="AmbientPurple">#55B06CFF</Color>
-                    <Color x:Key="AmbientTeal">#4435C2C1</Color>
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
-
-            <!-- NavigationView 透明,让 Mica 与氛围背景透出来。 -->
-            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
-            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
-            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
-            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
-            <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="Transparent" />
-            <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
-            <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
-
             <x:Double x:Key="PageMaxWidth">1200</x:Double>
 
             <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
@@ -46,32 +15,24 @@
             </Style>
 
             <Style x:Key="CardBorder" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource GlassFillBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource GlassStrokeBrush}" />
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="18" />
-                <Setter Property="Padding" Value="18" />
+                <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
+                <Setter Property="Padding" Value="16" />
             </Style>
 
-            <Style x:Key="PillButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="CornerRadius" Value="17" />
-                <Setter Property="Padding" Value="16,7" />
-                <Setter Property="Background" Value="{ThemeResource GlassStrongFillBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource GlassStrokeBrush}" />
-            </Style>
+            <!-- 保留键名,样式与系统默认按钮一致 -->
+            <Style x:Key="PillButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}" />
+            <Style x:Key="AccentPillButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}" />
 
-            <Style x:Key="AccentPillButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
-                <Setter Property="CornerRadius" Value="17" />
-                <Setter Property="Padding" Value="16,7" />
-            </Style>
-
-            <!-- 可点击的玻璃卡片(列表行、统计卡片) -->
-            <Style x:Key="GlassCardButton" TargetType="Button">
-                <Setter Property="Background" Value="{ThemeResource GlassStrongFillBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource GlassStrokeBrush}" />
+            <!-- 可点击的卡片行(与"设置"应用里的设置卡片一致) -->
+            <Style x:Key="CardButton" TargetType="Button">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="14" />
-                <Setter Property="Padding" Value="14,10" />
+                <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                <Setter Property="Padding" Value="16,12" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -80,7 +41,7 @@
                         <ControlTemplate TargetType="Button">
                             <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                   BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
-                                <Border x:Name="Hover" Background="{ThemeResource GlassHoverBrush}" Opacity="0" CornerRadius="{TemplateBinding CornerRadius}" />
+                                <Border x:Name="Hover" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Opacity="0" CornerRadius="{TemplateBinding CornerRadius}" />
                                 <ContentPresenter Padding="{TemplateBinding Padding}"
                                                   HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                                   VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />

@@ -53,6 +53,7 @@ public sealed partial class MainWindow : Window
             presenter.PreferredMinimumHeight = 660;
         }
         UiSettings.ApplyTheme(Root);
+        NativeTheme.ApplyMenuTheme(UiSettings.Theme);
         App.Breadcrumb("window: input");
 
         AppWindow.Closing += OnClosing;
@@ -145,7 +146,9 @@ public sealed partial class MainWindow : Window
             CorePage.Settings => typeof(SettingsPage),
             _ => typeof(OverviewPage),
         };
-        if (ContentFrame.Content?.GetType() != type) ContentFrame.Navigate(type);
+        // 系统默认的入场过渡;页面启用缓存,来回切换不重建、不闪烁。
+        if (ContentFrame.Content?.GetType() != type)
+            ContentFrame.Navigate(type, null, new Microsoft.UI.Xaml.Media.Animation.EntranceNavigationTransitionInfo());
         syncingNavigation = true;
         Nav.SelectedItem = page == CorePage.Settings
             ? Nav.SettingsItem
@@ -162,6 +165,15 @@ public sealed partial class MainWindow : Window
         else if (args.SelectedItem is NavigationViewItem { Tag: string tag } && Enum.TryParse<CorePage>(tag, out var page))
             store.Page = page;
     }
+
+    // 侧栏收起为图标条时,底部的监控状态与按钮放不下,隐藏;展开时再显示。
+    void OnPaneOpening(NavigationView sender, object args) => PaneFooterPanel.Visibility = Visibility.Visible;
+
+    void OnPaneClosing(NavigationView sender, NavigationViewPaneClosingEventArgs args) =>
+        PaneFooterPanel.Visibility = sender.DisplayMode == NavigationViewDisplayMode.Minimal ? Visibility.Visible : Visibility.Collapsed;
+
+    void OnDisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
+        PaneFooterPanel.Visibility = sender.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
 
     void OnRunOnce(object sender, RoutedEventArgs e) => _ = store.RunAsync("once");
 
