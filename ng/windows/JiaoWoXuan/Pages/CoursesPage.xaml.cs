@@ -62,6 +62,9 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
             case nameof(AppStore.FilteredCourses) or nameof(AppStore.CourseFilter):
                 RenderCourses();
                 break;
+            case nameof(AppStore.CourseSort):
+                RenderHeaders();
+                break;
             case nameof(AppStore.GroupsDirty) or nameof(AppStore.SelectedGroup) or nameof(AppStore.SelectedGroupData)
                 or nameof(AppStore.Evaluations) or nameof(AppStore.Busy):
                 RenderPlan();
@@ -133,7 +136,7 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
         if (!(CategoryBox.ItemsSource is List<string> current && current.SequenceEqual(categories)))
             CategoryBox.ItemsSource = categories;
         CategoryBox.SelectedItem = store.CourseFilter.Category;
-        SortBox.SelectedIndex = (int)store.CourseFilter.Sort;
+        RenderHeaders();
         OnlyOpenToggle.IsChecked = store.CourseFilter.OnlyOpen;
         OnlyUnassignedToggle.IsChecked = store.CourseFilter.OnlyUnassigned;
         if (SearchBox.Text != store.CourseFilter.Query) SearchBox.Text = store.CourseFilter.Query;
@@ -176,7 +179,6 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
         store.CourseFilter = store.CourseFilter with
         {
             Category = CategoryBox.SelectedItem as string ?? CourseFilter.AllCategories,
-            Sort = SortBox.SelectedIndex < 0 ? CourseSort.Catalog : (CourseSort)SortBox.SelectedIndex,
         };
     }
 
@@ -187,6 +189,30 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
             OnlyOpen = OnlyOpenToggle.IsChecked == true,
             OnlyUnassigned = OnlyUnassignedToggle.IsChecked == true,
         };
+    }
+
+    /// 点击列头排序:升序 → 降序 → 恢复目录顺序。
+    void OnHeaderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tag } && Enum.TryParse<CourseColumn>(tag, out var column))
+            store.CourseSort = store.CourseSort.Toggle(column);
+    }
+
+    void RenderHeaders()
+    {
+        var headers = new (Button Button, CourseColumn Column, string Text)[]
+        {
+            (HeaderTitle, CourseColumn.Title, "课程"), (HeaderTeachers, CourseColumn.Teachers, "教师"),
+            (HeaderSchedule, CourseColumn.Schedule, "时间"), (HeaderKch, CourseColumn.Kch, "课程号"),
+            (HeaderSeats, CourseColumn.Seats, "容量"), (HeaderStatus, CourseColumn.Status, "状态"),
+            (HeaderRating, CourseColumn.Rating, "评分"), (HeaderGroup, CourseColumn.Group, "方案"),
+        };
+        foreach (var (button, column, text) in headers)
+        {
+            var active = store.CourseSort.Column == column;
+            button.Content = active ? $"{text} {(store.CourseSort.Descending ? "▼" : "▲")}" : text;
+            button.FontWeight = active ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
+        }
     }
 
     void OnSyncCatalog(object sender, RoutedEventArgs e) => _ = store.RunAsync("bootstrap");
@@ -411,7 +437,6 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
         var count = PriorityList.SelectedItems.Count;
         MoveUpButton.IsEnabled = count == 1;
         MoveDownButton.IsEnabled = count == 1;
-        HeldButton.IsEnabled = count == 1;
         RemoveButton.IsEnabled = count > 0;
     }
 
@@ -428,11 +453,6 @@ public sealed partial class CoursesPage : Microsoft.UI.Xaml.Controls.Page
         if (SelectedMembers() is not [var id]) return;
         store.MoveMember(id, delta);
         if (priorityItems.FirstOrDefault(i => i.Id == id) is { } item) PriorityList.SelectedItem = item;
-    }
-
-    void OnSetHeld(object sender, RoutedEventArgs e)
-    {
-        if (SelectedMembers() is [var id]) store.SetAsHeld(id);
     }
 
     void OnRemoveMembers(object sender, RoutedEventArgs e) => store.RemoveMembers(SelectedMembers());

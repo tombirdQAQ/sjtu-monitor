@@ -12,8 +12,8 @@ public enum AutoSwapState: String, Codable, Sendable {
     public var label: String {
         switch self {
         case .off: "关闭"
-        case .dryRun: "演练"
-        case .enabled: "真实启用"
+        case .dryRun: "通知"
+        case .enabled: "启用"
         }
     }
 }

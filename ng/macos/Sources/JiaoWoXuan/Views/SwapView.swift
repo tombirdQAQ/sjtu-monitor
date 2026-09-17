@@ -45,7 +45,7 @@ struct SwapView: View {
                     Table(snapshot.swapHistory.enumerated().map { IndexedSwapRow(id: $0.offset, element: $0.element) }) {
                         TableColumn("时间") { Text($0.element.timestamp ?? "-").monospacedDigit() }
                             .width(min: 130, ideal: 150)
-                        TableColumn("模式") { Text($0.element.dryRun == true ? "演练" : "真实") }
+                        TableColumn("模式") { Text($0.element.dryRun == true ? "通知" : "启用") }
                             .width(min: 40, ideal: 50)
                         TableColumn("方案") { Text($0.element.group ?? "-") }
                         TableColumn("课程") { Text($0.element.kcmc ?? AppStore.shortId($0.element.target)) }
@@ -69,12 +69,12 @@ struct SwapView: View {
                 .frame(maxHeight: .infinity)
             }
             .background { AmbientBackground() }
-            .confirmationDialog("启用真实自动换课？", isPresented: $confirmEnable) {
+            .confirmationDialog("启用自动换课？", isPresented: $confirmEnable) {
                 Button("启用", role: .destructive) {
                     Task { await store.setAutoSwap(enabled: true, dryRun: false) }
                 }
             } message: {
-                Text("真实自动换课会执行退课和选课。换课只会向更高优先级升级，不会降级；设置在重启监控后生效。")
+                Text("启用后监控会真正执行退课和选课。换课只会向更高优先级升级，不会降级；设置在重启监控后生效。")
             }
         }
     }
@@ -83,7 +83,7 @@ struct SwapView: View {
         HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("自动换课").font(.headline)
-                    Text("监控发现更高优先级课程有空位时自动退旧选新；时间冲突的课程不会被选择。")
+                    Text(modeDescription(snapshot.metrics.autoSwap))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -98,9 +98,9 @@ struct SwapView: View {
                         }
                     }
                 )) {
-                    Text("关闭").tag(AutoSwapState.off)
-                    if !store.releaseMode { Text("演练").tag(AutoSwapState.dryRun) }
-                    Text("真实启用").tag(AutoSwapState.enabled)
+                    Text(AutoSwapState.off.label).tag(AutoSwapState.off)
+                    Text(AutoSwapState.dryRun.label).tag(AutoSwapState.dryRun)
+                    Text(AutoSwapState.enabled.label).tag(AutoSwapState.enabled)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -109,6 +109,14 @@ struct SwapView: View {
         }
         .padding(16)
         .glassCard(cornerRadius: 20, tint: snapshot.metrics.autoSwap == .enabled ? .red.opacity(0.15) : nil)
+    }
+}
+
+private func modeDescription(_ mode: AutoSwapState) -> String {
+    switch mode {
+    case .off: "不处理换课，只记录余量变化。时间冲突的课程不会被选择。"
+    case .dryRun: "发现可以换入的更高优先级课程时只发通知，不实际退选或选课。"
+    case .enabled: "发现更高优先级课程有空位时自动退旧选新，只升级不降级。"
     }
 }
 

@@ -122,7 +122,14 @@ public sealed class AppStore(Action<Action> dispatch, Func<BackendLaunch>? resol
     Dictionary<string, CourseRow> coursesById = [];
     public IReadOnlyDictionary<string, CourseRow> CoursesById => coursesById;
 
-    public List<CourseRow> FilteredCourses => CourseFilter.Apply(Courses);
+    CourseSortOrder courseSort = new();
+    public CourseSortOrder CourseSort
+    {
+        get => courseSort;
+        set { if (Set(ref courseSort, value)) Raise(nameof(FilteredCourses)); }
+    }
+
+    public List<CourseRow> FilteredCourses => CourseFilter.Apply(Courses, CourseSort);
 
     public PriorityGroup? SelectedGroupData => Groups.FirstOrDefault(g => g.Name == SelectedGroup);
 
@@ -517,14 +524,6 @@ public sealed class AppStore(Action<Action> dispatch, Func<BackendLaunch>? resol
         var target = index + delta;
         if (index < 0 || target < 0 || target >= group.Priority.Count) return;
         (group.Priority[index], group.Priority[target]) = (group.Priority[target], group.Priority[index]);
-        GroupsChanged();
-    }
-
-    public void SetAsHeld(string id)
-    {
-        if (SelectedGroupData is not { } group) return;
-        group.Priority.Remove(id);
-        group.Priority.Add(id);
         GroupsChanged();
     }
 

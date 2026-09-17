@@ -31,8 +31,8 @@ public static class Labels
 {
     public static string Of(AutoSwapState state) => state switch
     {
-        AutoSwapState.Enabled => "真实启用",
-        AutoSwapState.DryRun => "演练",
+        AutoSwapState.Enabled => "启用",
+        AutoSwapState.DryRun => "通知",
         _ => "关闭",
     };
 
@@ -186,6 +186,26 @@ public sealed class CourseRow
     public string StatusText => Chosen ? "已选" : AvailabilityText;
     public Tone StatusTone => Chosen ? Tone.Accent : Availability == Availability.Open ? Tone.Success : Tone.Neutral;
     public bool IsRated => Rating.Status == RatingStatus.Rated;
+
+    /// 剩余名额(列头排序用);无法解析时为 int.MinValue。
+    public int SortRemainingSeats
+    {
+        get
+        {
+            var parts = SeatText.Split('/', StringSplitOptions.TrimEntries);
+            return parts.Length == 2 && int.TryParse(parts[0], out var selected) && int.TryParse(parts[1], out var capacity)
+                ? capacity - selected
+                : int.MinValue;
+        }
+    }
+
+    /// 已选 < 有空位 < 已满 < 未知。
+    public int SortStatus => Chosen ? 0 : Availability switch
+    {
+        Availability.Open => 1,
+        Availability.Full => 2,
+        _ => 3,
+    };
     public string KchText => Kch ?? "-";
     public string GroupText => Group ?? "";
     public string ScheduleText => Schedule.Count > 0 ? string.Join("\n", Schedule) : "-";
@@ -289,7 +309,7 @@ public sealed class SwapHistoryRow
     [JsonPropertyName("status")] public string? Status { get; set; }
     [JsonPropertyName("kcmc")] public string? Kcmc { get; set; }
 
-    public string ModeText => DryRun == true ? "演练" : "真实";
+    public string ModeText => DryRun == true ? "通知" : "启用";
     public string ResultText => Ok == true ? "成功" : Status ?? "失败";
     public string CourseText => Kcmc ?? Labels.ShortId(Target);
     public string TimestampText => Timestamp ?? "-";

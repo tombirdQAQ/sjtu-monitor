@@ -61,9 +61,20 @@ public class CourseFilterTests
     [Fact]
     public void RatingSortPutsUnratedLast()
     {
-        var result = new CourseFilter { Sort = CourseSort.Rating }
-            .Apply([Course("a", "甲"), Course("b", "乙", 3), Course("c", "丙", 4.5)]);
+        var result = new CourseFilter()
+            .Apply([Course("a", "甲"), Course("b", "乙", 3), Course("c", "丙", 4.5)], new CourseSortOrder(CourseColumn.Rating, Descending: true));
         Assert.Equal(["c", "b", "a"], result.Select(c => c.JxbId));
+    }
+
+    [Fact]
+    public void HeaderClickCyclesAscendingDescendingOff()
+    {
+        var sort = new CourseSortOrder().Toggle(CourseColumn.Title);
+        Assert.Equal(new CourseSortOrder(CourseColumn.Title), sort);
+        sort = sort.Toggle(CourseColumn.Title);
+        Assert.True(sort.Descending);
+        Assert.Null(sort.Toggle(CourseColumn.Title).Column);
+        Assert.Equal(new CourseSortOrder(CourseColumn.Rating), sort.Toggle(CourseColumn.Rating));
     }
 
     [Fact]

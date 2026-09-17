@@ -37,10 +37,20 @@ final class CourseFilterTests: XCTestCase {
     }
 
     func testRatingSortPutsUnratedLast() {
-        var filter = CourseFilter()
-        filter.sort = .rating
-        let result = filter.apply(to: [course("a", "甲"), course("b", "乙", score: 3), course("c", "丙", score: 4.5)])
+        let rows = [course("a", "甲"), course("b", "乙", score: 3), course("c", "丙", score: 4.5)]
+        let result = rows.sorted(using: KeyPathComparator(\CourseRow.sortRating, order: .reverse))
         XCTAssertEqual(result.map(\.jxbId), ["c", "b", "a"])
+    }
+
+    func testSeatAndStatusSortKeys() {
+        var open = course("a", "甲", open: true)
+        open.seatText = "51 / 60"
+        var full = course("b", "乙")
+        full.seatText = "66 / 65"
+        XCTAssertEqual(open.sortRemainingSeats, 9)
+        XCTAssertEqual(full.sortRemainingSeats, -1)
+        XCTAssertEqual(course("c", "丙").sortRemainingSeats, Int.min)
+        XCTAssertLessThan(open.sortStatus, full.sortStatus)
     }
 
     func testFiltersCombine() {
@@ -127,8 +137,7 @@ final class RealSnapshotTests: XCTestCase {
         }
         let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         XCTAssertFalse(snapshot.courses.isEmpty)
-        var filter = CourseFilter()
-        filter.sort = .rating
-        XCTAssertEqual(filter.apply(to: snapshot.courses).count, snapshot.courses.count)
+        let sorted = snapshot.courses.sorted(using: [KeyPathComparator(\CourseRow.title), KeyPathComparator(\CourseRow.sortRating)])
+        XCTAssertEqual(sorted.count, snapshot.courses.count)
     }
 }

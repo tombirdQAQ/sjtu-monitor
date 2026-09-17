@@ -1,18 +1,6 @@
 import Foundation
 
-public enum CourseSort: String, CaseIterable, Identifiable, Sendable {
-    case catalog, name, rating
-    public var id: String { rawValue }
-    public var label: String {
-        switch self {
-        case .catalog: "目录顺序"
-        case .name: "课程名称"
-        case .rating: "评分从高到低"
-        }
-    }
-}
-
-/// 课程目录的筛选条件。纯展示逻辑:与业务规则无关,各客户端各自实现即可。
+/// 课程目录的筛选条件。排序由表格列头决定(见 CourseRow 的排序键),这里只负责筛选。
 public struct CourseFilter: Equatable, Sendable {
     public static let allCategories = "全部"
 
@@ -20,42 +8,49 @@ public struct CourseFilter: Equatable, Sendable {
     public var category = CourseFilter.allCategories
     public var onlyOpen = false
     public var onlyUnassigned = false
-    public var sort: CourseSort = .catalog
 
     public init() {}
 
+    public var isActive: Bool {
+        category != Self.allCategories || onlyOpen || onlyUnassigned
+    }
+
     public func apply(to courses: [CourseRow]) -> [CourseRow] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let matches = courses.filter { course in
+        guard !needle.isEmpty || isActive else { return courses }
+        return courses.filter { course in
             if category != Self.allCategories && course.category != category { return false }
             if onlyOpen && course.availability != .open { return false }
             if onlyUnassigned && course.group != nil { return false }
-            if !needle.isEmpty && !course.searchText.lowercased().contains(needle) { return false }
+            if !needle.isEmpty && !course.searchText.contains(needle) { return false }
             return true
         }
-        return Self.sorted(matches, by: sort)
+    }
+}
+
+// MARK: - 列头排序用的键(都是非可选类型,可直接用于 KeyPathComparator)
+
+extension CourseRow {
+    public var sortKch: String { kch ?? "" }
+    public var sortGroup: String { group ?? "" }
+
+    /// 剩余名额;无法解析时排在最后(升序)/最前(降序)。
+    public var sortRemainingSeats: Int {
+        let parts = seatText.split(separator: "/").map { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 2, let selected = parts[0], let capacity = parts[1] else { return Int.min }
+        return capacity - selected
     }
 
-    private static let chinaLocale = Locale(identifier: "zh_CN")
-
-    public static func sorted(_ courses: [CourseRow], by sort: CourseSort) -> [CourseRow] {
-        guard sort != .catalog else { return courses }
-        return courses.sorted { left, right in
-            if sort == .rating, left.rating.sortScore != right.rating.sortScore {
-                switch (left.rating.sortScore, right.rating.sortScore) {
-                case (nil, _): return false
-                case (_, nil): return true
-                case let (l?, r?): return l > r
-                }
-            }
-            let order = left.title.compare(
-                right.title,
-                options: [.caseInsensitive, .numeric, .widthInsensitive],
-                range: nil,
-                locale: chinaLocale
-            )
-            if order != .orderedSame { return order == .orderedAscending }
-            return left.jxbId < right.jxbId
+    /// 已选 < 有空位 < 已满 < 未知。
+    public var sortStatus: Int {
+        if chosen { return 0 }
+        switch availability {
+        case .open: return 1
+        case .full: return 2
+        case .unknown: return 3
         }
     }
+
+    /// 只有 rated 参与分数排序;未评分记为 -1。
+    public var sortRating: Double { rating.sortScore ?? -1 }
 }

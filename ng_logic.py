@@ -145,6 +145,8 @@ def _format_change_record(record: dict[str, Any]) -> tuple[str, str]:
     if kind == "spot_open":
         return "warn", f"🔥 [有空位] {label} — {record.get('msg') or ''}"
     if kind == "swap_result":
+        if record.get("ok") and record.get("dry_run"):
+            return "warn", f"🔔 [可换课] {label} — 满足换课条件（通知模式，未实际操作）"
         if record.get("ok"):
             return "info", f"✅ [换课成功] {label} 已抢到"
         status = str(record.get("status") or "")
@@ -162,6 +164,22 @@ def _format_change_record(record: dict[str, Any]) -> tuple[str, str]:
         )
     if kind == "schedule_unknown_skip":
         return "warn", f"[跳过换课·时间未知] {label} — 无法确认冲突，保守跳过"
+    if kind == "choosed_changed":
+        parts = []
+        if record.get("added"):
+            parts.append("新增 " + "、".join(map(str, record["added"])))
+        if record.get("removed"):
+            parts.append("减少 " + "、".join(map(str, record["removed"])))
+        return "info", "📋 [已选课程变化] " + ("；".join(parts) or "教学班有变动")
+    if kind == "choosed_fetch_failed":
+        if record.get("fallback") == "saved":
+            detail = f"暂用上次记录（{record.get('count', 0)} 门）"
+        else:
+            detail = "无历史记录，暂按方案推断"
+        return "warn", f"⚠️ [已选课程抓取失败] {detail}"
+    if kind == "choosed_fetch_recovered":
+        suffix = f"，当前已选 {record['count']} 门" if record.get("count") is not None else ""
+        return "info", f"✅ [已选课程抓取恢复]{suffix}"
     changes = record.get("changes")
     if isinstance(changes, dict):
         parts = []

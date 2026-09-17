@@ -71,7 +71,12 @@ final class AppStore {
     var status = "正在启动后端服务"
     private(set) var busy = false
     var notice: Notice?
-    var courseFilter = CourseFilter()
+    var courseFilter = CourseFilter() { didSet { if courseFilter != oldValue { refilterCourses() } } }
+    /// 课程表列头排序;为空表示目录原始顺序。
+    var courseSortOrder: [KeyPathComparator<CourseRow>] = [] { didSet { if courseSortOrder != oldValue { refilterCourses() } } }
+    /// 筛选+排序的缓存结果:视图每次重绘都会读,不能每次重新计算 2000+ 行。
+    private(set) var filteredCourses: [CourseRow] = []
+    private(set) var coursesById: [String: CourseRow] = [:]
     var courseSelection: Set<String> = []
     var inspectedCourse: String?
     var selectedGroup: String?
@@ -93,10 +98,11 @@ final class AppStore {
     var needsOnboarding: Bool { snapshot.map { !$0.onboarding.completed } ?? false }
 
     var courses: [CourseRow] { snapshot?.courses ?? [] }
-    var coursesById: [String: CourseRow] {
-        Dictionary(courses.map { ($0.jxbId, $0) }, uniquingKeysWith: { first, _ in first })
+
+    private func refilterCourses() {
+        let filtered = courseFilter.apply(to: courses)
+        filteredCourses = courseSortOrder.isEmpty ? filtered : filtered.sorted(using: courseSortOrder)
     }
-    var filteredCourses: [CourseRow] { courseFilter.apply(to: courses) }
     var selectedGroupIndex: Int? { groups.firstIndex { $0.name == selectedGroup } }
 
     var stateRows: [StateRow] {
@@ -225,6 +231,8 @@ final class AppStore {
         let groupsWereDirty = groupsDirty
         let settingsWereDirty = settingsDirty
         snapshot = data
+        coursesById = Dictionary(data.courses.map { ($0.jxbId, $0) }, uniquingKeysWith: { first, _ in first })
+        refilterCourses()
         running = Set(data.running)
         if replaceEdits || !groupsWereDirty {
             savedPlans = data.groups.map(\.plan)
@@ -389,12 +397,6 @@ final class AppStore {
         let target = position + delta
         guard groups[index].priority.indices.contains(target) else { return }
         groups[index].priority.swapAt(position, target)
-    }
-
-    func setAsHeld(_ id: String) {
-        guard let index = selectedGroupIndex else { return }
-        groups[index].priority.removeAll { $0 == id }
-        groups[index].priority.append(id)
     }
 
     func removeMembers(_ ids: Set<String>) {

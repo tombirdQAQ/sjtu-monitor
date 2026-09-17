@@ -125,15 +125,11 @@ private struct CourseFilterMenu: View {
 
     var body: some View {
         @Bindable var store = store
-        let active = store.courseFilter.category != CourseFilter.allCategories
-            || store.courseFilter.onlyOpen || store.courseFilter.onlyUnassigned
+        let active = store.courseFilter.isActive
         Menu {
             Picker("类别", selection: $store.courseFilter.category) {
                 Text("全部类别").tag(CourseFilter.allCategories)
                 ForEach(store.snapshot?.categories ?? [], id: \.self) { Text($0).tag($0) }
-            }
-            Picker("排序", selection: $store.courseFilter.sort) {
-                ForEach(CourseSort.allCases) { Text($0.label).tag($0) }
             }
             Divider()
             Toggle("只看有空位", isOn: $store.courseFilter.onlyOpen)
@@ -149,7 +145,7 @@ private struct CourseFilterMenu: View {
         } label: {
             Label("筛选", systemImage: active ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
         }
-        .help("筛选与排序")
+        .help("筛选课程；点击表头排序")
     }
 }
 
@@ -159,31 +155,32 @@ private struct CourseTable: View {
     var body: some View {
         @Bindable var store = store
         let rows = store.filteredCourses
-        Table(rows, selection: $store.courseSelection) {
-            TableColumn("课程") { course in
+        // 点击列头排序;再次点击切换升降序。排序结果缓存在 store 里,只在排序/筛选/数据变化时计算一次。
+        Table(rows, selection: $store.courseSelection, sortOrder: $store.courseSortOrder) {
+            TableColumn("课程", value: \.title) { course in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(course.title).lineLimit(1)
                     Text(course.className).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             .width(min: 180, ideal: 260)
-            TableColumn("教师") { Text($0.teachers).lineLimit(1) }
+            TableColumn("教师", value: \.teachers) { Text($0.teachers).lineLimit(1) }
                 .width(min: 60, ideal: 110)
-            TableColumn("时间") { Text($0.firstSchedule).lineLimit(1).help($0.schedule.joined(separator: "\n")) }
+            TableColumn("时间", value: \.firstSchedule) { Text($0.firstSchedule).lineLimit(1).help($0.schedule.joined(separator: "\n")) }
                 .width(min: 120, ideal: 200)
-            TableColumn("课程号") { Text($0.kch ?? "-").font(.body.monospaced()).lineLimit(1) }
+            TableColumn("课程号", value: \.sortKch) { Text($0.kch ?? "-").font(.body.monospaced()).lineLimit(1) }
                 .width(min: 70, ideal: 90)
-            TableColumn("容量") { Text($0.seatText).monospacedDigit() }
+            TableColumn("容量", value: \.sortRemainingSeats) { Text($0.seatText).monospacedDigit() }
                 .width(min: 50, ideal: 70)
-            TableColumn("状态") { StatusBadge(text: $0.statusText, tone: $0.statusTone) }
+            TableColumn("状态", value: \.sortStatus) { StatusBadge(text: $0.statusText, tone: $0.statusTone) }
                 .width(min: 50, ideal: 64)
-            TableColumn("评分") { course in
+            TableColumn("评分", value: \.sortRating) { course in
                 Text(course.ratingText)
                     .foregroundStyle(course.rating.status == .rated ? .primary : .secondary)
                     .lineLimit(1)
             }
             .width(min: 60, ideal: 100)
-            TableColumn("方案") { Text($0.group ?? "").foregroundStyle(.secondary).lineLimit(1) }
+            TableColumn("方案", value: \.sortGroup) { Text($0.group ?? "").foregroundStyle(.secondary).lineLimit(1) }
                 .width(min: 50, ideal: 80)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
@@ -395,13 +392,6 @@ private struct PlanEditor: View {
                     }
                     .disabled(store.memberSelection.count != 1)
                     Button {
-                        if let id = store.memberSelection.first { store.setAsHeld(id) }
-                    } label: {
-                        Label("设为当前持有", systemImage: "pin").frame(maxWidth: .infinity)
-                    }
-                    .glassButton()
-                    .disabled(store.memberSelection.count != 1)
-                    Button {
                         store.removeMembers(store.memberSelection)
                     } label: {
                         Label("移除所选", systemImage: "minus.circle").frame(maxWidth: .infinity)
@@ -504,7 +494,6 @@ private struct PriorityList: View {
                 .padding(.vertical, 2)
                 .tag(id)
                 .contextMenu {
-                    Button("设为当前持有") { store.setAsHeld(id) }
                     Button("从方案移除") { store.removeMembers([id]) }
                 }
             }

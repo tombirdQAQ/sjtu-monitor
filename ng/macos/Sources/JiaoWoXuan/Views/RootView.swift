@@ -55,23 +55,14 @@ private struct Workbench: View {
                     ForEach([Page.overview, .courses, .swap]) { page in
                         // 不用 .badge:在 macOS 26+ 的边栏里它会让 List 的选中完全失效(点击无反应)。
                         NavigationLink(value: page) {
-                            HStack {
-                                Label(page.title, systemImage: page.symbol)
-                                if page == .courses && store.groupsDirty {
-                                    Spacer()
-                                    Circle()
-                                        .fill(.orange)
-                                        .frame(width: 7, height: 7)
-                                        .help("方案有未保存的修改")
-                                }
-                            }
+                            SidebarRow(page: page, dirty: page == .courses && store.groupsDirty)
                         }
                     }
                 }
                 Section("数据") {
                     ForEach([Page.snapshot, .logs]) { page in
                         NavigationLink(value: page) {
-                            Label(page.title, systemImage: page.symbol)
+                            SidebarRow(page: page, dirty: false)
                         }
                     }
                 }
@@ -107,6 +98,35 @@ private struct Workbench: View {
     private var subtitle: String {
         if store.groupsDirty { return "方案有未保存的修改" }
         return store.status
+    }
+}
+
+/// 边栏行:悬停时显示浅色高亮(系统边栏默认没有悬停反馈)。
+private struct SidebarRow: View {
+    let page: Page
+    let dirty: Bool
+    @State private var hovering = false
+
+    var body: some View {
+        HStack {
+            Label(page.title, systemImage: page.symbol)
+            Spacer(minLength: 0)
+            if dirty {
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 7, height: 7)
+                    .help("方案有未保存的修改")
+            }
+        }
+        .contentShape(Rectangle())
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(hovering ? 0.08 : 0))
+                .padding(.horizontal, -8)
+                .padding(.vertical, -4)
+        }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 }
     }
 }
 

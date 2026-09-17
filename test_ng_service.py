@@ -98,6 +98,17 @@ class ParseLogLineTests(unittest.TestCase):
         entry = ng_logic.parse_log_line("changes", '{"kind": "swap_result", "ok": false, "status": "FATAL_LOST", "kcmc": "物理"}')
         self.assertEqual(entry["level"], "error")
 
+    def test_notify_mode_swap_is_not_reported_as_success(self):
+        entry = ng_logic.parse_log_line("changes", '{"kind": "swap_result", "ok": true, "dry_run": true, "kcmc": "物理", "jxbmc": "01"}')
+        self.assertIn("[可换课]", entry["message"])
+        self.assertNotIn("换课成功", entry["message"])
+
+    def test_choosed_events_are_readable(self):
+        failed = ng_logic.parse_log_line("changes", '{"kind": "choosed_fetch_failed", "fallback": "saved", "count": 3}')
+        self.assertEqual(failed["level"], "warn")
+        self.assertIn("已选课程抓取失败", failed["message"])
+        self.assertIn("已选课程抓取恢复", ng_logic.parse_log_line("changes", '{"kind": "choosed_fetch_recovered"}')["message"])
+
     def test_plain_text_heuristics(self):
         self.assertEqual(ng_logic.parse_log_line("x", "exit=0", "01:02:03")["level"], "info")
         self.assertEqual(ng_logic.parse_log_line("x", "exit=3")["level"], "error")
@@ -121,6 +132,18 @@ class BootstrapNoticeTests(unittest.TestCase):
 
     def test_garbage_result_ignored(self):
         self.assertIsNone(ng_logic.parse_bootstrap_result("[bootstrap-result] {oops"))
+
+
+class NotifierWordingTests(unittest.TestCase):
+    def test_notify_mode_swap_wording(self):
+        import notifier
+
+        line = notifier._format_change_line({"kind": "swap_result", "ok": True, "dry_run": True, "kcmc": "物理", "jxbmc": "01"})
+        self.assertIn("可换课", line)
+        self.assertNotIn("成功", line)
+        with patch.object(notifier, "_toast") as toast, patch.object(notifier, "_email"):
+            notifier.send([{"kind": "swap_result", "ok": True, "dry_run": True, "kcmc": "物理", "jxbmc": "01"}])
+        self.assertIn("可换入", toast.call_args[0][0])
 
 
 class ProcessManagerTests(unittest.TestCase):

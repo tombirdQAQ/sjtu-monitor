@@ -23,13 +23,12 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="自动换课" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="监控发现更高优先级课程有空位时自动退旧选新；只升级不降级，时间冲突的课程不会被选择。设置在重启监控后生效。"
-                               Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ModeDescription" Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
                 </StackPanel>
                 <RadioButtons x:Name="ModeButtons" Grid.Column="1" MaxColumns="3" SelectionChanged="OnModeChanged" VerticalAlignment="Center">
                     <x:String>关闭</x:String>
-                    <x:String>演练</x:String>
-                    <x:String>真实启用</x:String>
+                    <x:String>通知</x:String>
+                    <x:String>启用</x:String>
                 </RadioButtons>
             </Grid>
         </Border>

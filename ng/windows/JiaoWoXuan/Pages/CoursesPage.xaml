@@ -44,11 +44,6 @@
             <AutoSuggestBox x:Name="SearchBox" PlaceholderText="搜索课程、教师、编号、时间或地点" QueryIcon="Find"
                             TextChanged="OnSearchChanged" />
             <ComboBox x:Name="CategoryBox" Grid.Column="1" MinWidth="130" SelectionChanged="OnFilterChanged" />
-            <ComboBox x:Name="SortBox" Grid.Column="2" MinWidth="130" SelectionChanged="OnFilterChanged">
-                <x:String>目录顺序</x:String>
-                <x:String>课程名称</x:String>
-                <x:String>评分从高到低</x:String>
-            </ComboBox>
             <ToggleButton x:Name="OnlyOpenToggle" Grid.Column="3" Content="有空位" Click="OnFilterToggled" />
             <ToggleButton x:Name="OnlyUnassignedToggle" Grid.Column="4" Content="未分配" Click="OnFilterToggled" />
             <TextBlock x:Name="CountText" Grid.Column="6" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
@@ -91,14 +86,14 @@
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="80" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="课程" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="1" Text="教师" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="2" Text="时间" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="3" Text="课程号" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="4" Text="容量" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="5" Text="状态" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="6" Text="评分" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="7" Text="方案" Style="{StaticResource ColumnHeader}" />
+                        <Button x:Name="HeaderTitle" Tag="Title" Content="课程" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="1" x:Name="HeaderTeachers" Tag="Teachers" Content="教师" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="2" x:Name="HeaderSchedule" Tag="Schedule" Content="时间" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="3" x:Name="HeaderKch" Tag="Kch" Content="课程号" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="4" x:Name="HeaderSeats" Tag="Seats" Content="容量" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="5" x:Name="HeaderStatus" Tag="Status" Content="状态" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="6" x:Name="HeaderRating" Tag="Rating" Content="评分" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
+                        <Button Grid.Column="7" x:Name="HeaderGroup" Tag="Group" Content="方案" Style="{StaticResource ColumnHeaderButton}" Click="OnHeaderClick" />
                     </Grid>
                     <ListView x:Name="CourseList" Grid.Row="1" SelectionMode="Extended" IsItemClickEnabled="False"
                               SelectionChanged="OnCourseSelectionChanged" DoubleTapped="OnCourseDoubleTapped">
@@ -239,7 +234,6 @@
                             <Button x:Name="MoveUpButton" ToolTipService.ToolTip="上移" Click="OnMoveUp"><FontIcon Glyph="&#xE70E;" FontSize="14" /></Button>
                             <Button x:Name="MoveDownButton" ToolTipService.ToolTip="下移" Click="OnMoveDown"><FontIcon Glyph="&#xE70D;" FontSize="14" /></Button>
                         </StackPanel>
-                        <Button x:Name="HeldButton" Content="设为当前持有" HorizontalAlignment="Stretch" Click="OnSetHeld" />
                         <Button x:Name="RemoveButton" Content="移除所选" HorizontalAlignment="Stretch" Click="OnRemoveMembers" />
                         <Button Content="删除方案…" HorizontalAlignment="Stretch" Click="OnDeleteGroup" />
                     </StackPanel>

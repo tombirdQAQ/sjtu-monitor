@@ -24,6 +24,9 @@ def _format_change_line(c: dict) -> str:
     if kind == "spot_open":
         return f"🔥 [有空位] {jxb} {name} — {c.get('msg','')}"
     if kind == "swap_result":
+        if c.get("ok") and c.get("dry_run"):
+            # 通知模式(dry_run):只提醒可以换,没有真正退选/选课。
+            return f"🔔 [可换课] {jxb} {name} — 有空位且满足换课条件(通知模式,未实际操作)"
         if c.get("ok"):
             return f"✅ [SWAP成功] {jxb} {name} 已抢到!"
         st = c.get("status", "")
@@ -204,7 +207,12 @@ def send(changes: list[dict]) -> None:
         for c in changes
     )
     has_swap_ok = any(
-        c.get("kind") == "swap_result" and c.get("ok") for c in changes
+        c.get("kind") == "swap_result" and c.get("ok") and not c.get("dry_run")
+        for c in changes
+    )
+    has_swap_notice = any(
+        c.get("kind") == "swap_result" and c.get("ok") and c.get("dry_run")
+        for c in changes
     )
     has_spot = any(c["kind"] == "spot_open" for c in changes)
     has_choosed_alert = any(c["kind"] == "choosed_fetch_failed" for c in changes)
@@ -212,6 +220,8 @@ def send(changes: list[dict]) -> None:
         prefix = "❌ FATAL"
     elif has_swap_ok:
         prefix = "✅ 抢到了"
+    elif has_swap_notice:
+        prefix = "🔔 可换课"
     elif has_spot:
         prefix = "🔥 有空位"
     elif has_choosed_alert:
@@ -230,6 +240,8 @@ def send(changes: list[dict]) -> None:
         title = "❌ SJTU 选课 FATAL!"
     elif has_swap_ok:
         title = "✅ SJTU 抢课成功"
+    elif has_swap_notice:
+        title = "🔔 SJTU 有可换入的课程"
     elif has_spot:
         title = "🔥 SJTU 选课有空位!"
     elif has_choosed_alert:

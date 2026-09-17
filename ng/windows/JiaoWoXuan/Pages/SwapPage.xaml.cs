@@ -43,10 +43,13 @@ public sealed partial class SwapPage : Microsoft.UI.Xaml.Controls.Page
     {
         if (store.Snapshot is not { } snapshot) return;
         rendering = true;
-        // 发行版不提供演练模式:隐藏第二个选项。
-        if (ModeButtons.ContainerFromIndex(1) is Microsoft.UI.Xaml.UIElement dryRun)
-            dryRun.Visibility = Ui.Show(!store.ReleaseMode);
         ModeButtons.SelectedIndex = (int)snapshot.Metrics.AutoSwap;
+        ModeDescription.Text = snapshot.Metrics.AutoSwap switch
+        {
+            AutoSwapState.DryRun => "发现可以换入的更高优先级课程时只发通知，不实际退选或选课。设置在重启监控后生效。",
+            AutoSwapState.Enabled => "发现更高优先级课程有空位时自动退旧选新，只升级不降级；时间冲突的课程不会被选择。设置在重启监控后生效。",
+            _ => "不处理换课，只记录余量变化。设置在重启监控后生效。",
+        };
         ModeButtons.IsEnabled = !store.Busy;
         rendering = false;
 
@@ -74,7 +77,7 @@ public sealed partial class SwapPage : Microsoft.UI.Xaml.Controls.Page
         var mode = (AutoSwapState)ModeButtons.SelectedIndex;
         if (mode == snapshot.Metrics.AutoSwap) return;
         if (mode == AutoSwapState.Enabled
-            && !await Ui.Confirm("启用真实自动换课？", "真实自动换课会执行退课和选课。换课只会向更高优先级升级，不会降级；设置在重启监控后生效。", "启用", destructive: true))
+            && !await Ui.Confirm("启用自动换课？", "启用后监控会真正执行退课和选课。换课只会向更高优先级升级，不会降级；设置在重启监控后生效。", "启用", destructive: true))
         {
             Render();
             return;
