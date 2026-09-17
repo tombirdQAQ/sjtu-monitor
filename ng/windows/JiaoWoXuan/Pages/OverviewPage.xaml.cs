@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using JiaoWoXuan.Core;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 
 namespace JiaoWoXuan.Pages;
@@ -29,25 +31,33 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
             Render();
     }
 
+    static Style Res(string key) => (Style)Application.Current.Resources[key];
+
     void Render()
     {
         if (store.Snapshot is not { } snapshot) return;
+        UserTerm.Text = snapshot.User.Term;
         UserName.Text = Labels.UserValue(snapshot.User.Name);
-        UserTerm.Text = $"{snapshot.User.Term} · {Labels.UserValue(snapshot.User.Major)}";
-        GeneratedAt.Text = $"更新于 {snapshot.GeneratedAt}";
+        UserMajor.Text = Labels.UserValue(snapshot.User.Major);
+        GeneratedAt.Text = $"更新于 {snapshot.GeneratedAt.Replace('T', ' ')}";
 
         var monitor = store.MonitorRunning;
         var once = store.Running.Contains("once");
-        MonitorTitle.Text = monitor ? "持续监控中" : once ? "单次检查中" : "未运行";
+        MonitorTitle.Text = monitor ? "持续监控中" : once ? "单次检查中" : "监控未运行";
         MonitorSubtitle.Text = monitor ? "正在按配置轮询课程余量" : once ? "正在执行一次本地监控流程" : "可以启动单次检查或持续监控";
+        MonitorIcon.Glyph = monitor ? "" : "";
         MonitorIcon.Foreground = Ui.ToneForeground(monitor ? Tone.Success : once ? Tone.Accent : Tone.Neutral);
+        MonitorCard.Background = monitor
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 0x2E, 0xB8, 0x5C))
+            : (Brush)Application.Current.Resources["GlassFillBrush"];
         IntervalText.Text = snapshot.Metrics.Interval;
         AutoSwapBadge.Text = Labels.Of(snapshot.Metrics.AutoSwap);
         AutoSwapBadge.Tone = ToneOf(snapshot.Metrics.AutoSwap);
-        OnceButton.Content = once ? "检查中…" : "单次检查";
+        OnceText.Text = once ? "检查中…" : "单次检查";
         OnceButton.IsEnabled = !once;
-        MonitorButton.Content = monitor ? "停止监控" : "开始持续监控";
-        MonitorButton.Style = (Style)Application.Current.Resources[monitor ? "DefaultButtonStyle" : "AccentButtonStyle"];
+        MonitorButtonText.Text = monitor ? "停止监控" : "开始持续监控";
+        MonitorButtonIcon.Glyph = monitor ? "" : "";
+        MonitorButton.Style = Res(monitor ? "PillButton" : "AccentPillButton");
 
         RenderMetrics(snapshot.Metrics);
         RenderProfile(snapshot);
@@ -63,34 +73,34 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
 
     void RenderMetrics(Metrics metrics)
     {
-        var items = new (string Title, string Value, Tone Tone)[]
+        var items = new (string Title, string Value, string Glyph, Tone Tone)[]
         {
-            ("查询课程", metrics.Queries.ToString(), Tone.Neutral),
-            ("方案组", metrics.Groups.ToString(), Tone.Neutral),
-            ("快照教学班", metrics.Snapshot.ToString(), Tone.Neutral),
-            ("当前目标", metrics.Watched.ToString(), Tone.Neutral),
-            ("目录空位", metrics.OpenCourses.ToString(), Tone.Neutral),
-            ("自动换课", Labels.Of(metrics.AutoSwap), ToneOf(metrics.AutoSwap)),
+            ("查询课程", metrics.Queries.ToString(), "", Tone.Neutral),
+            ("方案组", metrics.Groups.ToString(), "", Tone.Neutral),
+            ("快照教学班", metrics.Snapshot.ToString(), "", Tone.Neutral),
+            ("当前目标", metrics.Watched.ToString(), "", Tone.Neutral),
+            ("目录空位", metrics.OpenCourses.ToString(), "", Tone.Neutral),
+            ("自动换课", Labels.Of(metrics.AutoSwap), "", ToneOf(metrics.AutoSwap)),
         };
         MetricsGrid.Children.Clear();
         MetricsGrid.ColumnDefinitions.Clear();
         for (var i = 0; i < items.Length; i++)
         {
+            var (title, valueText, glyph, tone) = items[i];
             MetricsGrid.ColumnDefinitions.Add(new ColumnDefinition());
-            var value = new TextBlock { Text = items[i].Value, Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] };
-            if (items[i].Tone != Tone.Neutral) value.Foreground = Ui.ToneForeground(items[i].Tone);
+            var icon = new FontIcon { Glyph = glyph, FontSize = 15, HorizontalAlignment = HorizontalAlignment.Left };
+            icon.Foreground = Ui.ToneForeground(tone == Tone.Neutral ? Tone.Neutral : tone);
+            var value = new TextBlock { Text = valueText, FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+            if (tone != Tone.Neutral) value.Foreground = Ui.ToneForeground(tone);
             var card = new Border
             {
-                Style = (Style)Application.Current.Resources["CardBorder"],
-                Padding = new Thickness(14, 10, 14, 12),
+                Style = Res("CardBorder"),
+                Padding = new Thickness(16, 14, 16, 14),
+                Background = tone == Tone.Neutral ? (Brush)Application.Current.Resources["GlassFillBrush"] : Ui.ToneBackground(tone),
                 Child = new StackPanel
                 {
-                    Spacing = 4,
-                    Children =
-                    {
-                        new TextBlock { Text = items[i].Title, Style = (Style)Application.Current.Resources["SecondaryText"] },
-                        value,
-                    },
+                    Spacing = 6,
+                    Children = { icon, value, new TextBlock { Text = title, Style = Res("SecondaryText") } },
                 },
             };
             Grid.SetColumn(card, i);
@@ -106,9 +116,8 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
             ("学号", Labels.UserValue(snapshot.User.StudentId)),
             ("班级", Labels.UserValue(snapshot.User.ClassName)),
             ("专业", Labels.UserValue(snapshot.User.Major)),
-            ("学期", snapshot.User.Term),
-            ("目录更新", snapshot.User.CatalogFetchedAt ?? "-"),
-            ("已选同步", snapshot.ChoosedAt ?? "-"),
+            ("目录更新", snapshot.User.CatalogFetchedAt?.Replace('T', ' ') ?? "-"),
+            ("已选同步", snapshot.ChoosedAt?.Replace('T', ' ') ?? "-"),
         };
         ProfileGrid.Children.Clear();
         ProfileGrid.RowDefinitions.Clear();
@@ -118,8 +127,8 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
         for (var i = 0; i < rows.Length; i++)
         {
             ProfileGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var label = new TextBlock { Text = rows[i].Item1, Style = (Style)Application.Current.Resources["SecondaryText"] };
-            var value = new TextBlock { Text = rows[i].Item2, IsTextSelectionEnabled = true };
+            var label = new TextBlock { Text = rows[i].Item1, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+            var value = new TextBlock { Text = rows[i].Item2, IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap };
             Grid.SetRow(label, i);
             Grid.SetRow(value, i);
             Grid.SetColumn(value, 1);
@@ -134,32 +143,35 @@ public sealed partial class OverviewPage : Microsoft.UI.Xaml.Controls.Page
         NoGroups.Visibility = Ui.Show(snapshot.Groups.Count == 0);
         foreach (var group in snapshot.Groups)
         {
-            var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-            if (group.ConflictCount > 0) badges.Children.Add(Ui.Badge($"冲突 {group.ConflictCount}", Tone.Danger));
-            if (group.Fatal) badges.Children.Add(Ui.Badge("暂停", Tone.Danger));
-            var grid = new Grid { ColumnSpacing = 8 };
+            var grid = new Grid { ColumnSpacing = 10 };
             grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.Children.Add(new StackPanel
             {
+                Spacing = 1,
                 Children =
                 {
-                    new TextBlock { Text = group.Name, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
-                    new TextBlock { Text = $"{group.HeldLabel} · 监控 {group.WatchedCount}", Style = (Style)Application.Current.Resources["SecondaryText"] },
+                    new TextBlock { Text = group.Name, Style = Res("BodyStrongTextBlockStyle") },
+                    new TextBlock { Text = $"{group.HeldLabel} · 监控 {group.WatchedCount}", Style = Res("SecondaryText") },
                 },
             });
+            var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+            if (group.ConflictCount > 0) badges.Children.Add(Ui.Badge($"冲突 {group.ConflictCount}", Tone.Danger));
+            if (group.Fatal) badges.Children.Add(Ui.Badge("暂停", Tone.Danger));
             Grid.SetColumn(badges, 1);
             grid.Children.Add(badges);
-            var name = group.Name;
-            var button = new Button
+            var chevron = new FontIcon
             {
-                Content = grid,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Background = null,
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(8, 6, 8, 6),
+                Glyph = "",
+                FontSize = 12,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
             };
+            Grid.SetColumn(chevron, 2);
+            grid.Children.Add(chevron);
+
+            var name = group.Name;
+            var button = new Button { Content = grid, Style = Res("GlassCardButton") };
             button.Click += (_, _) =>
             {
                 store.SelectedGroup = name;

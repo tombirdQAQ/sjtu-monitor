@@ -26,7 +26,7 @@
                     <PasswordBox x:Name="Password" Header="密码" KeyDown="OnPasswordKeyDown" />
                     <TextBlock Text="本应用面向上海交通大学在校师生，需使用学校统一分配的 JAccount 登录。"
                                Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
-                    <Button x:Name="SaveAccountButton" Content="保存并继续" Style="{StaticResource AccentButtonStyle}"
+                    <Button x:Name="SaveAccountButton" Content="保存并继续" Style="{StaticResource AccentPillButton}"
                             HorizontalAlignment="Right" Click="OnSaveAccount" />
                 </StackPanel>
 
@@ -46,10 +46,10 @@
                         </ItemsControl>
                     </Border>
                     <Grid>
-                        <Button x:Name="BackButton" Content="返回修改账号" Click="OnBack" />
+                        <Button Style="{StaticResource PillButton}" x:Name="BackButton" Content="返回修改账号" Click="OnBack" />
                         <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
                             <ProgressRing x:Name="SyncRing" IsActive="False" Width="20" Height="20" />
-                            <Button x:Name="SyncButton" Style="{StaticResource AccentButtonStyle}" Click="OnSync" />
+                            <Button x:Name="SyncButton" Style="{StaticResource AccentPillButton}" Click="OnSync" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -60,7 +60,7 @@
                     <TextBlock Text="进入课程工作台后，新建方案并按从高到低排列教学班，当前已选班放在末尾。"
                                Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
                     <TextBlock Text="✓ 双击或右键课程可加入当前方案&#x0a;✓ 自动换课只向更高优先级升级，不会降级&#x0a;✓ 自动换课默认关闭，需在完成方案后手动启用" />
-                    <Button x:Name="FinishButton" Content="进入课程方案" Style="{StaticResource AccentButtonStyle}"
+                    <Button x:Name="FinishButton" Content="进入课程方案" Style="{StaticResource AccentPillButton}"
                             HorizontalAlignment="Right" Click="OnFinish" />
                 </StackPanel>
 

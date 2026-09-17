@@ -123,7 +123,7 @@ public sealed partial class MainWindow : Window
         TermText.Text = store.Snapshot?.User.Term ?? "";
         OnceButton.IsEnabled = !once && store.IsReady;
         MonitorButton.Content = monitor ? "停止监控" : "开始监控";
-        MonitorButton.Style = (Style)Application.Current.Resources[monitor ? "DefaultButtonStyle" : "AccentButtonStyle"];
+        MonitorButton.Style = (Style)Application.Current.Resources[monitor ? "PillButton" : "AccentPillButton"];
         MonitorButton.IsEnabled = store.IsReady;
         TaskProgress.Visibility = store.Running.Except(["monitor"]).Any() ? Visibility.Visible : Visibility.Collapsed;
 

@@ -20,7 +20,7 @@
             <TextBlock x:Name="TermLabel" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
             <local:StatusBadge x:Name="TermBadge" />
             <TextBlock x:Name="SiteText" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
-            <Button x:Name="SwitchTermButton" Content="切换到教务当前学期" Visibility="Collapsed" Click="OnSwitchTerm" />
+            <Button Style="{StaticResource PillButton}" x:Name="SwitchTermButton" Content="切换到教务当前学期" Visibility="Collapsed" Click="OnSwitchTerm" />
             <DropDownButton x:Name="HistoryButton" Visibility="Collapsed" ToolTipService.ToolTip="历史学期仅供参考；只有教务网站当前学期能抓到数据">
                 <DropDownButton.Flyout>
                     <MenuFlyout x:Name="HistoryFlyout" />
@@ -179,19 +179,19 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-            <Button Grid.Column="1" Content="新建方案">
+            <Button Style="{StaticResource PillButton}" Grid.Column="1" Content="新建方案">
                 <Button.Flyout>
                     <Flyout x:Name="NewGroupFlyout">
                         <StackPanel Spacing="10" Width="240">
                             <TextBlock Text="新建选课方案" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBox x:Name="NewGroupName" PlaceholderText="例如：大学物理" KeyDown="OnNewGroupKeyDown" />
-                            <Button Content="创建" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Right" Click="OnCreateGroup" />
+                            <Button Content="创建" Style="{StaticResource AccentPillButton}" HorizontalAlignment="Right" Click="OnCreateGroup" />
                         </StackPanel>
                     </Flyout>
                 </Button.Flyout>
             </Button>
-            <Button x:Name="RevertButton" Grid.Column="2" Content="放弃修改" Click="OnRevert" />
-            <Button x:Name="SaveButton" Grid.Column="3" Content="保存方案" Style="{StaticResource AccentButtonStyle}" Click="OnSave" />
+            <Button Style="{StaticResource PillButton}" x:Name="RevertButton" Grid.Column="2" Content="放弃修改" Click="OnRevert" />
+            <Button x:Name="SaveButton" Grid.Column="3" Content="保存方案" Style="{StaticResource AccentPillButton}" Click="OnSave" />
         </Grid>
 
         <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="0">
@@ -228,14 +228,14 @@
                                Style="{StaticResource SecondaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Spacing="8" Padding="14" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                         <CheckBox x:Name="PeCheck" Content="体育课方案" Click="OnPeToggled" />
-                        <Button x:Name="AddSelectedButton" HorizontalAlignment="Stretch" Click="OnAddSelected" />
+                        <Button Style="{StaticResource PillButton}" x:Name="AddSelectedButton" HorizontalAlignment="Stretch" Click="OnAddSelected" />
                         <MenuFlyoutSeparator />
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Button x:Name="MoveUpButton" ToolTipService.ToolTip="上移" Click="OnMoveUp"><FontIcon Glyph="&#xE70E;" FontSize="14" /></Button>
-                            <Button x:Name="MoveDownButton" ToolTipService.ToolTip="下移" Click="OnMoveDown"><FontIcon Glyph="&#xE70D;" FontSize="14" /></Button>
+                            <Button Style="{StaticResource PillButton}" x:Name="MoveUpButton" ToolTipService.ToolTip="上移" Click="OnMoveUp"><FontIcon Glyph="&#xE70E;" FontSize="14" /></Button>
+                            <Button Style="{StaticResource PillButton}" x:Name="MoveDownButton" ToolTipService.ToolTip="下移" Click="OnMoveDown"><FontIcon Glyph="&#xE70D;" FontSize="14" /></Button>
                         </StackPanel>
-                        <Button x:Name="RemoveButton" Content="移除所选" HorizontalAlignment="Stretch" Click="OnRemoveMembers" />
-                        <Button Content="删除方案…" HorizontalAlignment="Stretch" Click="OnDeleteGroup" />
+                        <Button Style="{StaticResource PillButton}" x:Name="RemoveButton" Content="移除所选" HorizontalAlignment="Stretch" Click="OnRemoveMembers" />
+                        <Button Style="{StaticResource PillButton}" Content="删除方案…" HorizontalAlignment="Stretch" Click="OnDeleteGroup" />
                     </StackPanel>
                 </Grid>
                 <TextBlock x:Name="NoGroupText" Text="尚未创建选课方案：点击“新建方案”后，从上方课程目录加入教学班"

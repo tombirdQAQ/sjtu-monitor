@@ -111,7 +111,8 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
   - `JiaoWoXuan.Core`（net10.0，不依赖 WinUI）：模型、stdio 客户端、`AppStore` 状态；
   - `JiaoWoXuan`（WinUI 3，非打包、自包含 Windows App SDK）：窗口、页面、托盘（H.NotifyIcon）、Toast 通知。
 - 依赖版本集中在 `ng/windows/Directory.Build.props`（Windows App SDK 2.4.0）。
+- 界面：Mica 窗口背景 + 彩色径向渐变氛围层 + 应用内 Acrylic 玻璃卡片（`GlassFillBrush`、`CardBorder`、`GlassCardButton`、`PillButton`，见 `App.xaml`），对应 macOS 版的 Liquid Glass。
 - 已知坑：
-  - **不要给 WinUI 项目加自定义 `app.manifest`**：Windows App SDK 会为非打包应用生成清单，自定义清单会让窗口在构造时于 `Microsoft.UI.Input.dll` 里 fail-fast（0xc0000602）；
-  - 通过 SSH/WMI 在非交互会话里启动 WinUI 窗口同样会崩，这是会话限制，不代表程序有问题。GUI 只能在桌面会话里验证。
+  - **必须保留 `app.manifest` 并声明 `PerMonitorV2`**：去掉后非打包应用在高 DPI 屏上会按 96 DPI 渲染再由系统拉伸，整体发虚。（早先在 SSH 会话里看到的 `Microsoft.UI.Input.dll` 崩溃与清单无关，见下条。）
+  - 通过 SSH/WMI 在非交互会话里启动 WinUI 窗口会在构造 `Window` 时 fail-fast，任何 WinUI 程序都一样，不代表程序有问题。GUI 只能在桌面会话里验证；这台机器上的交互式计划任务也不会执行，需要本人双击桌面快捷方式启动。
 - 诊断：启动面包屑写在 `%LOCALAPPDATA%\sjtu-monitor-ng\startup.log`，托管异常写在同目录的 `crash.log`。

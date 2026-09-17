@@ -71,7 +71,7 @@
                         </Grid>
                         <TextBlock Text="默认使用交大邮箱 mail.sjtu.edu.cn:465（SSL），账号为 jAccount@sjtu.edu.cn，密码复用 JAccount 密码；改用其他邮箱时覆盖对应字段即可。"
                                    Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
-                        <Button x:Name="TestMailButton" Content="保存并发送测试邮件" Click="OnTestMail" />
+                        <Button Style="{StaticResource PillButton}" x:Name="TestMailButton" Content="保存并发送测试邮件" Click="OnTestMail" />
                     </StackPanel>
                 </Border>
 
@@ -91,7 +91,7 @@
                 Background="{ThemeResource LayerFillColorDefaultBrush}">
             <Grid MaxWidth="820">
                 <TextBlock x:Name="DirtyText" Text="有未保存的修改；正在运行的监控需重启后使用新参数" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
-                <Button x:Name="SaveButton" Content="保存设置" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Right" Click="OnSave" />
+                <Button x:Name="SaveButton" Content="保存设置" Style="{StaticResource AccentPillButton}" HorizontalAlignment="Right" Click="OnSave" />
             </Grid>
         </Border>
     </Grid>

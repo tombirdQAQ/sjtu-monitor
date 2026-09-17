@@ -7,6 +7,8 @@
     <RootNamespace>JiaoWoXuan</RootNamespace>
     <AssemblyName>JiaoWoXuan</AssemblyName>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- 声明 PerMonitorV2 DPI 感知,否则高分屏上整体发虚。 -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;ARM64</Platforms>
     <UseWinUI>true</UseWinUI>
     <!-- 非打包(unpackaged)应用:直接运行 exe,不需要 MSIX 与开发者模式。 -->
