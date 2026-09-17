@@ -43,12 +43,13 @@ struct OnboardingView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .padding(28)
-            .frame(width: 560)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .padding(32)
+            .frame(width: 580)
+            .glassCard(cornerRadius: 28)
             Spacer(minLength: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { AmbientBackground() }
     }
 
     private var account: some View {
@@ -72,6 +73,7 @@ struct OnboardingView: View {
                 Spacer()
                 Button("保存并继续") { Task { await store.saveOnboardingAccount() } }
                     .keyboardShortcut(.defaultAction)
+                    .glassButton(prominent: true)
                     .disabled(store.busy)
             }
         }
@@ -102,6 +104,7 @@ struct OnboardingView: View {
                 if syncing { ProgressView().controlSize(.small) }
                 Button(syncing ? "同步中…" : "开始同步课程") { store.run("bootstrap", adoptSiteTerm: true) }
                     .keyboardShortcut(.defaultAction)
+                    .glassButton(prominent: true)
                     .disabled(syncing)
             }
         }
@@ -121,6 +124,7 @@ struct OnboardingView: View {
                 Spacer()
                 Button("进入课程方案") { Task { await store.finishOnboarding() } }
                     .keyboardShortcut(.defaultAction)
+                    .glassButton(prominent: true)
                     .disabled(store.busy)
             }
         }

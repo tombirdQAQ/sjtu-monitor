@@ -96,6 +96,11 @@ stdin 关闭时，服务端会结束自己启动的所有子进程，然后退�
 - 启动：在 conda 环境 `sjtu-monitor` 中运行 `python gui.py --ng`（会先构建 debug 版 `.app`，再以源码后端启动）。
 - 构建：`ng/macos/build-app.sh [debug|release]`，产物为 `ng/macos/build/交我选.app`。
 - 测试：`cd ng/macos && swift test`（包含一个真正启动 `ng_service.py` 的端到端用例）；Python 侧运行 `python -m unittest test_ng_service`。
+- 界面：macOS 26+ 使用 Liquid Glass（`glassEffect`、`GlassEffectContainer`、`.glass`/`.glassProminent` 按钮），macOS 14/15 回落到 Material，兼容层在 `Views/Glass.swift`。
+- 已知坑（均在 macOS 27 上实测）：
+  - `build-app.sh` 必须用 `vtool` 把二进制的 SDK 版本改成实际 SDK。SwiftPM 会把它写成部署目标 14.0，系统据此以旧版兼容外观运行，Liquid Glass 不会启用；
+  - 边栏行上不要用 `.badge(...)`：会让 `List(selection:)` 完全失效，点击没有反应。未保存提示改为行内圆点；
+  - `NavigationSplitView` + `.inspector` 里不要用 `VSplitView`：会触发 AppKit 约束更新死循环，进入课程页就崩溃。
 - 验证真实数据能否解码：先把 `snapshot` 的输出存成 JSON，再用 `NG_SNAPSHOT_JSON=<该文件> swift test --filter RealSnapshotTests`。
 
 ## 开发与验证（Windows）

@@ -33,7 +33,12 @@ struct SnapshotView: View {
             }
             .width(min: 50, ideal: 64)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .tableStyle(.inset(alternatesRowBackgrounds: false))
+        .scrollContentBackground(.hidden)
+        .padding(8)
+        .glassCard(cornerRadius: 22)
+        .padding(16)
+        .background { AmbientBackground() }
         .overlay {
             if rows.isEmpty {
                 EmptyHint(title: "没有快照数据", symbol: "list.bullet.clipboard", message: "运行一次监控后这里会显示各教学班的余量")

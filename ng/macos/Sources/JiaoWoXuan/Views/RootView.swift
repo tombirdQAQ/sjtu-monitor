@@ -44,30 +44,52 @@ struct RootView: View {
 
 private struct Workbench: View {
     @Environment(AppStore.self) private var store
+    /// 边栏选中项用本地 @State + NavigationLink(value:) 驱动(SwiftUI 边栏的标准写法),
+    /// 再与 store.page 双向同步:菜单快捷键、总览里的跳转都会改 store.page。
+    @State private var selection: Page? = .overview
 
     var body: some View {
-        @Bindable var store = store
         NavigationSplitView {
-            List(selection: Binding(get: { store.page }, set: { if let page = $0 { store.page = page } })) {
+            List(selection: $selection) {
                 Section("工作台") {
                     ForEach([Page.overview, .courses, .swap]) { page in
-                        Label(page.title, systemImage: page.symbol).tag(page)
-                            .badge(page == .courses && store.groupsDirty ? Text("未保存") : nil)
+                        // 不用 .badge:在 macOS 26+ 的边栏里它会让 List 的选中完全失效(点击无反应)。
+                        NavigationLink(value: page) {
+                            HStack {
+                                Label(page.title, systemImage: page.symbol)
+                                if page == .courses && store.groupsDirty {
+                                    Spacer()
+                                    Circle()
+                                        .fill(.orange)
+                                        .frame(width: 7, height: 7)
+                                        .help("方案有未保存的修改")
+                                }
+                            }
+                        }
                     }
                 }
                 Section("数据") {
                     ForEach([Page.snapshot, .logs]) { page in
-                        Label(page.title, systemImage: page.symbol).tag(page)
+                        NavigationLink(value: page) {
+                            Label(page.title, systemImage: page.symbol)
+                        }
                     }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220)
             .safeAreaInset(edge: .bottom) { SidebarMonitorStatus() }
         } detail: {
             detail
                 .navigationTitle(store.page.title)
                 .navigationSubtitle(subtitle)
                 .toolbar { MonitorToolbar() }
+        }
+        .onAppear { selection = store.page }
+        .onChange(of: selection) { _, value in
+            if let value, value != store.page { store.page = value }
+        }
+        .onChange(of: store.page) { _, value in
+            if selection != value { selection = value }
         }
     }
 
@@ -105,8 +127,11 @@ private struct SidebarMonitorStatus: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .glassCard(cornerRadius: 14, tint: store.monitorRunning ? .green.opacity(0.18) : nil)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
     }
 }
 

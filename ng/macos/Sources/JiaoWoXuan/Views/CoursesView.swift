@@ -7,16 +7,19 @@ struct CoursesView: View {
 
     var body: some View {
         @Bindable var store = store
-        VSplitView {
-            VStack(spacing: 0) {
-                TermBar()
-                Divider()
-                CourseTable()
-            }
-            .frame(minHeight: 260)
+        // 不用 VSplitView:它在 NavigationSplitView + inspector 里会触发 AppKit 约束更新死循环并崩溃。
+        VStack(spacing: 0) {
+            TermBar()
+            CourseTable()
+                .frame(maxHeight: .infinity)
             PlanEditor()
-                .frame(minHeight: 220, idealHeight: 320)
+                .frame(height: 320)
+                .glassCard(cornerRadius: 24)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 6)
         }
+        .background { AmbientBackground() }
         .searchable(text: $store.courseFilter.query, placement: .toolbar, prompt: "搜索课程、教师、编号、时间或地点")
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
@@ -184,6 +187,7 @@ private struct CourseTable: View {
                 .width(min: 50, ideal: 80)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .scrollContentBackground(.hidden)
         .contextMenu(forSelectionType: String.self) { ids in
             let groupName = store.selectedGroup ?? "当前方案"
             Button("加入“\(groupName)”") { add(ids) }
@@ -290,7 +294,8 @@ private struct PlanEditor: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    GlassGroup(spacing: 8) {
+                    HStack(spacing: 8) {
                         ForEach(store.groups) { group in
                             GroupChip(group: group, selected: group.name == store.selectedGroup) {
                                 store.selectedGroup = group.name
@@ -298,7 +303,9 @@ private struct PlanEditor: View {
                             }
                         }
                     }
-                    .padding(.vertical, 2)
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 2)
                 }
                 Button {
                     newName = ""
@@ -306,6 +313,7 @@ private struct PlanEditor: View {
                 } label: {
                     Label("新建方案", systemImage: "plus")
                 }
+                .glassButton()
                 .popover(isPresented: $creating, arrowEdge: .bottom) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("新建选课方案").font(.headline)
@@ -324,29 +332,28 @@ private struct PlanEditor: View {
                 }
                 if store.groupsDirty {
                     Button("放弃修改") { store.revertGroups() }
+                        .glassButton()
                 }
                 Button("保存方案") { Task { await store.saveGroups() } }
                     .keyboardShortcut("s")
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                     .disabled(!store.groupsDirty || store.busy)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            Divider()
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 6)
             if let index = store.selectedGroupIndex {
                 HStack(spacing: 0) {
                     PriorityList(group: store.groups[index])
-                    Divider()
                     controls(store.groups[index])
-                        .frame(width: 190)
-                        .padding(12)
+                        .frame(width: 200)
+                        .padding(14)
                 }
             } else {
                 EmptyHint(title: "尚未创建选课方案", symbol: "list.number",
                           message: "新建方案后，从上方课程目录双击或右键加入教学班")
             }
         }
-        .background(.background)
         .confirmationDialog("删除方案“\(store.selectedGroup ?? "")”？", isPresented: $confirmDelete) {
             Button("删除", role: .destructive) { store.deleteSelectedGroup() }
         } message: {
@@ -355,8 +362,10 @@ private struct PlanEditor: View {
     }
 
     private func controls(_ group: PriorityGroup) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Toggle("体育课方案", isOn: Binding(get: { group.isPe }, set: { store.setPE($0) }))
+                .toggleStyle(.switch)
+                .controlSize(.small)
             Button {
                 let ids = store.filteredCourses.map(\.jxbId).filter(store.courseSelection.contains)
                 Task {
@@ -365,29 +374,50 @@ private struct PlanEditor: View {
                     }
                 }
             } label: {
-                Label("加入所选课程 (\(store.courseSelection.count))", systemImage: "plus.rectangle.on.rectangle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Label("加入所选 (\(store.courseSelection.count))", systemImage: "plus")
+                    .frame(maxWidth: .infinity)
             }
+            .glassButton(prominent: !store.courseSelection.isEmpty)
             .disabled(store.courseSelection.isEmpty)
-            Divider()
-            HStack {
-                Button { store.moveSelectedMember(by: -1) } label: { Image(systemName: "arrow.up") }
-                    .help("上移")
-                Button { store.moveSelectedMember(by: 1) } label: { Image(systemName: "arrow.down") }
-                    .help("下移")
-                Spacer()
+            GlassGroup(spacing: 6) {
+                VStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Button { store.moveSelectedMember(by: -1) } label: {
+                            Image(systemName: "arrow.up").frame(maxWidth: .infinity)
+                        }
+                        .help("上移")
+                        .glassButton()
+                        Button { store.moveSelectedMember(by: 1) } label: {
+                            Image(systemName: "arrow.down").frame(maxWidth: .infinity)
+                        }
+                        .help("下移")
+                        .glassButton()
+                    }
+                    .disabled(store.memberSelection.count != 1)
+                    Button {
+                        if let id = store.memberSelection.first { store.setAsHeld(id) }
+                    } label: {
+                        Label("设为当前持有", systemImage: "pin").frame(maxWidth: .infinity)
+                    }
+                    .glassButton()
+                    .disabled(store.memberSelection.count != 1)
+                    Button {
+                        store.removeMembers(store.memberSelection)
+                    } label: {
+                        Label("移除所选", systemImage: "minus.circle").frame(maxWidth: .infinity)
+                    }
+                    .glassButton()
+                    .disabled(store.memberSelection.isEmpty)
+                }
             }
-            .disabled(store.memberSelection.count != 1)
-            Button("设为当前持有") {
-                if let id = store.memberSelection.first { store.setAsHeld(id) }
-            }
-            .disabled(store.memberSelection.count != 1)
-            Button("移除所选") { store.removeMembers(store.memberSelection) }
-                .disabled(store.memberSelection.isEmpty)
             Spacer()
-            Button("删除方案…", role: .destructive) { confirmDelete = true }
+            Button(role: .destructive) {
+                confirmDelete = true
+            } label: {
+                Label("删除方案…", systemImage: "trash").frame(maxWidth: .infinity)
+            }
+            .glassButton()
         }
-        .controlSize(.regular)
     }
 
     private func create() {
@@ -412,20 +442,25 @@ private struct GroupChip: View {
                         .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.85)) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
                 }
-                if conflicts > 0 { StatusBadge(text: "冲突 \(conflicts)", tone: .danger) }
-                if group.fatal { StatusBadge(text: "暂停", tone: .danger) }
+                if conflicts > 0 {
+                    if selected {
+                        Label("\(conflicts)", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .help("\(conflicts) 个课程与本组外已选冲突，不会被选择")
+                    } else {
+                        StatusBadge(text: "冲突 \(conflicts)", tone: .danger)
+                    }
+                }
+                if group.fatal { StatusBadge(text: "暂停", tone: selected ? .neutral : .danger) }
             }
             .frame(maxWidth: 240, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
             .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-            .background(
-                selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary.opacity(0.6)),
-                in: RoundedRectangle(cornerRadius: 7)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 7))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .glassCapsule(tint: selected ? .accentColor : nil, interactive: true)
     }
 }
 
@@ -475,6 +510,7 @@ private struct PriorityList: View {
             }
             .onMove { store.moveMembers(from: $0, to: $1) }
         }
+        .scrollContentBackground(.hidden)
         .onDeleteCommand { store.removeMembers(store.memberSelection) }
         .overlay {
             if group.priority.isEmpty {

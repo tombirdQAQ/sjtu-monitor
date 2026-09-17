@@ -7,7 +7,7 @@ struct SwapView: View {
 
     var body: some View {
         if let snapshot = store.snapshot {
-            VSplitView {
+            VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 14) {
                     modeSwitch(snapshot)
                     Text("方案执行状态").font(.headline)
@@ -31,11 +31,14 @@ struct SwapView: View {
                         }
                         .width(min: 50, ideal: 70)
                     }
-                    .tableStyle(.inset)
+                    .tableStyle(.inset(alternatesRowBackgrounds: false))
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .glassCard(cornerRadius: 20)
                     .frame(minHeight: 140)
                 }
                 .padding(16)
-                .frame(minHeight: 260)
+                .frame(maxHeight: .infinity)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("换课记录").font(.headline).padding([.top, .horizontal], 16)
@@ -52,15 +55,20 @@ struct SwapView: View {
                         }
                         .width(min: 60, ideal: 110)
                     }
-                    .tableStyle(.inset)
+                    .tableStyle(.inset(alternatesRowBackgrounds: false))
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .glassCard(cornerRadius: 20)
+                    .padding([.horizontal, .bottom], 16)
                     .overlay {
                         if snapshot.swapHistory.isEmpty {
                             EmptyHint(title: "暂无换课记录", symbol: "clock.arrow.circlepath")
                         }
                     }
                 }
-                .frame(minHeight: 160)
+                .frame(maxHeight: .infinity)
             }
+            .background { AmbientBackground() }
             .confirmationDialog("启用真实自动换课？", isPresented: $confirmEnable) {
                 Button("启用", role: .destructive) {
                     Task { await store.setAutoSwap(enabled: true, dryRun: false) }
@@ -72,8 +80,7 @@ struct SwapView: View {
     }
 
     private func modeSwitch(_ snapshot: Snapshot) -> some View {
-        GroupBox {
-            HStack(spacing: 16) {
+        HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("自动换课").font(.headline)
                     Text("监控发现更高优先级课程有空位时自动退旧选新；时间冲突的课程不会被选择。")
@@ -99,9 +106,9 @@ struct SwapView: View {
                 .labelsHidden()
                 .fixedSize()
                 .disabled(store.busy)
-            }
-            .padding(6)
         }
+        .padding(16)
+        .glassCard(cornerRadius: 20, tint: snapshot.metrics.autoSwap == .enabled ? .red.opacity(0.15) : nil)
     }
 }
 

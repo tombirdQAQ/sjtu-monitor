@@ -24,6 +24,10 @@ APP="$HERE/build/$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/JiaoWoXuan" "$APP/Contents/MacOS/JiaoWoXuan"
+# SwiftPM 把 LC_BUILD_VERSION 的 sdk 字段写成部署目标(14.0),系统会据此以旧版兼容外观运行,
+# Liquid Glass 等新系统界面不会启用。改写为实际编译所用的 SDK 版本。
+vtool -set-build-version macos 14.0 "$(xcrun --show-sdk-version)" -replace \
+    -output "$APP/Contents/MacOS/JiaoWoXuan" "$APP/Contents/MacOS/JiaoWoXuan"
 cp "$REPO/src-tauri/icons/icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
