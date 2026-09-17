@@ -44,19 +44,9 @@ jobs:
           Remove-Item -LiteralPath src-tauri/resources/sjtu-backend -Recurse -Force -ErrorAction SilentlyContinue
           python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
 
-      # 离线自检:确认冻结产物能加载原生依赖、以 UTF-8 输出中文,且包含 ng 服务模块。
+      # 离线自检:原生依赖可加载、UTF-8 中文输出、ng_service 以匿名管道正常工作(含演示模式)。
       - name: Verify sidecar
-        run: python -c "import subprocess; p=subprocess.run(['src-tauri/resources/sjtu-backend/sjtu-backend.exe', 'selfcheck'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True); text=p.stdout.decode('utf-8'); assert '中文编码验证：交我选' in text, text"
-
-      - name: Verify ng service in sidecar
-        shell: pwsh
-        run: |
-          $request = '{"id":1,"method":"hello","params":{}}'
-          $env:SJTU_MONITOR_DATA_DIR = Join-Path $env:RUNNER_TEMP 'ng-data'
-          New-Item -ItemType Directory -Force -Path $env:SJTU_MONITOR_DATA_DIR | Out-Null
-          $output = $request | & src-tauri/resources/sjtu-backend/sjtu-backend.exe ng_service.py
-          $output
-          if (-not ($output -match '"protocol":1')) { throw "sidecar 未返回 ng_service hello" }
+        run: python scripts/verify_sidecar.py src-tauri/resources/sjtu-backend/sjtu-backend.exe
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -137,20 +127,7 @@ jobs:
           python -m PyInstaller sjtu-backend.spec --distpath src-tauri/resources --noconfirm
 
       - name: Verify sidecar
-        run: |
-          output=$(./src-tauri/resources/sjtu-backend/sjtu-backend selfcheck)
-          echo "$output"
-          case "$output" in
-            *"中文编码验证：交我选"*) ;;
-            *) echo "selfcheck 输出不符合预期"; exit 1 ;;
-          esac
-          mkdir -p "$RUNNER_TEMP/ng-data"
-          hello=$(echo '{"id":1,"method":"hello","params":{}}' | SJTU_MONITOR_DATA_DIR="$RUNNER_TEMP/ng-data" ./src-tauri/resources/sjtu-backend/sjtu-backend ng_service.py)
-          echo "$hello"
-          case "$hello" in
-            *'"protocol":1'*) ;;
-            *) echo "sidecar 未返回 ng_service hello"; exit 1 ;;
-          esac
+        run: python scripts/verify_sidecar.py src-tauri/resources/sjtu-backend/sjtu-backend
 
       - name: Swift tests
         working-directory: ng/macos
