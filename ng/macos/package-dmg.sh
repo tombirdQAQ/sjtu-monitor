@@ -17,7 +17,7 @@ if [[ ! -x "$SJTU_BACKEND_DIR/sjtu-backend" ]]; then
     exit 1
 fi
 
-"$HERE/build-app.sh" release
+bash "$HERE/build-app.sh" release
 APP="$HERE/build/交我选.app"
 if [[ ! -x "$APP/Contents/Resources/sjtu-backend/sjtu-backend" ]]; then
     echo ".app 内缺少后端" >&2

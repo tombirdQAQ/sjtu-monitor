@@ -39,12 +39,23 @@ _write_lock = threading.Lock()
 
 
 def _open_protocol_stream() -> None:
+    """接管原始 stdout 专用于协议,其余 print 改写到 stderr。
+
+    不用 os.dup 另开文件描述符:PyInstaller 窗口化(console=False)的 Windows sidecar 里,
+    对复制出来的管道描述符写入会报 EINVAL;原 stdout 对象本身可以正常写(Tauri 版一直如此)。
+    """
     global _protocol_out
     if _protocol_out is not None:
         return
-    fd = os.dup(sys.__stdout__.fileno())
-    _protocol_out = open(fd, "w", encoding="utf-8", newline="\n", buffering=1)
-    sys.stdout = sys.stderr
+    stream = sys.stdout
+    if stream is None:
+        raise RuntimeError("stdout 不可用,无法建立协议通道")
+    try:
+        stream.reconfigure(encoding="utf-8", errors="strict", newline="\n")
+    except (AttributeError, ValueError):
+        pass
+    _protocol_out = stream
+    sys.stdout = sys.stderr if sys.stderr is not None else open(os.devnull, "w", encoding="utf-8")
 
 
 def send(message: dict[str, Any]) -> None:
