@@ -35,4 +35,16 @@
     <ProjectReference Include="..\JiaoWoXuan.Core\JiaoWoXuan.Core.csproj" />
   </ItemGroup>
 
+  <!-- 非打包应用 dotnet publish 不会带上自身的 JiaoWoXuan.pri 与 *.xbf(编译后的 XAML),
+       缺了它们发行版启动即 XamlParseException(1.0.0 的安装包就是这样)。 -->
+  <Target Name="CopyXamlResourcesToPublishDir" AfterTargets="Publish">
+    <ItemGroup>
+      <_XamlRuntimeResource Include="$(OutDir)$(TargetName).pri;$(OutDir)**\*.xbf" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(OutDir)$(TargetName).pri')" Text="构建输出缺少 $(TargetName).pri" />
+    <Copy SourceFiles="@(_XamlRuntimeResource)"
+          DestinationFiles="@(_XamlRuntimeResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

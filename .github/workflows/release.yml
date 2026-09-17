@@ -12,6 +12,11 @@ on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      replace_assets:
+        description: '替换已发布 Release 的 Windows 安装包与 MSIX(填标签,如 v1.0.0;留空只构建)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -74,7 +79,7 @@ jobs:
         env:
           MSIX_CERTIFICATE_BASE64: ${{ secrets.MSIX_CERTIFICATE_BASE64 }}
           MSIX_CERTIFICATE_PASSWORD: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
-          IS_TAG_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
+          IS_TAG_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') || inputs.replace_assets != '' }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $msixVersion = "$version.0"
@@ -145,7 +150,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.replace_assets != ''
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
@@ -157,6 +162,7 @@ jobs:
           merge-multiple: true
 
       - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -165,3 +171,13 @@ jobs:
             --draft \
             --title "交我选 ${{ github.ref_name }}" \
             --notes-file packaging/release-notes.md
+
+      # 已发布版本的 Windows 包有缺陷时原地替换(macOS DMG 不动)。
+      - name: Replace Windows assets of existing release
+        if: inputs.replace_assets != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.replace_assets }}
+        run: |
+          ls -la dist
+          gh release upload "$TAG" dist/*-setup.exe dist/*.msixbundle --clobber

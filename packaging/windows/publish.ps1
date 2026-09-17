@@ -40,4 +40,9 @@ $found = Get-ChildItem -LiteralPath $appDir -Recurse -File | Where-Object { $_.N
 if ($found) { throw "发行包里混入了运行期数据：$($found.FullName -join ', ')" }
 
 if (-not (Test-Path -LiteralPath (Join-Path $appDir "JiaoWoXuan.exe"))) { throw "发布目录缺少 JiaoWoXuan.exe" }
+# 缺少应用自身的 PRI/XBF 时窗口创建即 XamlParseException
+if (-not (Test-Path -LiteralPath (Join-Path $appDir "JiaoWoXuan.pri"))) { throw "发布目录缺少 JiaoWoXuan.pri" }
+foreach ($xbf in 'App.xbf', 'MainWindow.xbf', 'Pages\OverviewPage.xbf') {
+  if (-not (Test-Path -LiteralPath (Join-Path $appDir $xbf))) { throw "发布目录缺少 $xbf" }
+}
 Write-Host "已发布：$appDir"
