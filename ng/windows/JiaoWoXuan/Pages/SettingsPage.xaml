@@ -88,7 +88,7 @@
         </ScrollViewer>
 
         <Border Grid.Row="1" Padding="32,12" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                Background="{ThemeResource LayerFillColorDefaultBrush}">
+                Background="Transparent">
             <Grid MaxWidth="820">
                 <TextBlock x:Name="DirtyText" Text="有未保存的修改；正在运行的监控需重启后使用新参数" Style="{StaticResource SecondaryText}" VerticalAlignment="Center" />
                 <Button x:Name="SaveButton" Content="保存设置" Style="{StaticResource AccentPillButton}" HorizontalAlignment="Right" Click="OnSave" />

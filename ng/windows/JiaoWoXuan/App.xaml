@@ -8,6 +8,10 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- 内容区不叠加默认的灰色图层,和侧栏一样直接透出 Mica。 -->
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+
             <x:Double x:Key="PageMaxWidth">1200</x:Double>
 
             <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
