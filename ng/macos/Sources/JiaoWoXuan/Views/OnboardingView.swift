@@ -66,10 +66,17 @@ struct OnboardingView: View {
             .formStyle(.grouped)
             .scrollDisabled(true)
             .frame(height: 110)
-            Text("本应用面向上海交通大学在校师生，需使用学校统一分配的 JAccount 登录。")
+            Text("本应用面向上海交通大学在校师生，需使用学校统一分配的 JAccount 登录（jaccount.sjtu.edu.cn）。非交大用户可点击“以演示模式预览”查看示例数据与全部界面。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             HStack {
+                Button {
+                    Task { await store.enterDemo() }
+                } label: {
+                    Label("以演示模式预览", systemImage: "eye")
+                }
+                .glassButton()
+                .help("无需 JAccount 与校园网，使用离线示例数据体验全部界面")
                 Spacer()
                 Button("保存并继续") { Task { await store.saveOnboardingAccount() } }
                     .keyboardShortcut(.defaultAction)

@@ -428,9 +428,11 @@ public struct Snapshot: Codable, Sendable {
     public var categories: [String]
     public var running: [String]
     public var releaseMode: Bool
+    /// 演示模式:示例数据,联网与写入被服务端拒绝。
+    public var demo: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case metrics, settings, onboarding, user, terms, groups, courses, choosed, categories, running
+        case metrics, settings, onboarding, user, terms, groups, courses, choosed, categories, running, demo
         case generatedAt = "generated_at"
         case activeTerm = "active_term"
         case siteTerm = "site_term"

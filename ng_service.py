@@ -83,6 +83,13 @@ TASKS: dict[str, tuple[str, list[str]]] = {
     "detect-term": ("bootstrap.py", ["--detect-term"]),
 }
 
+# 演示模式下拒绝的方法:会联网或写盘。groups.save 在演示模式下只改内存,不在此列。
+DEMO_BLOCKED_METHODS = {
+    "settings.save", "settings.test_email", "onboarding.complete", "term.switch",
+    "autoswap.set", "process.start",
+}
+DEMO_BLOCKED_MESSAGE = "演示模式：联网、监控与写入操作已禁用，退出演示后可用"
+
 # 这些任务输出 [bootstrap-result] 结构化结果行,非 0 退出时据此生成提示。
 NOTICE_ACTIONS = {
     "bootstrap": "获取全量课程",
@@ -246,18 +253,21 @@ class LogBook:
     def query(self, level: str = "all", text: str = "", limit: int = 350) -> dict[str, Any]:
         with self._lock:
             runtime = list(self._runtime)
-        lines = [*self._persisted_entries(), *runtime]
-        needle = text.strip().casefold()
-        if needle:
-            lines = [line for line in lines if needle in f"{line['source']} {line['message']}".casefold()]
-        counts = {"all": len(lines), "info": 0, "warn": 0, "error": 0, "debug": 0}
-        for line in lines:
-            counts[line["level"]] = counts.get(line["level"], 0) + 1
-        if level and level != "all":
-            lines = [line for line in lines if line["level"] == level]
-        if limit > 0:
-            lines = lines[-limit:]
-        return {"entries": lines, "counts": counts}
+        return filter_log_entries([*self._persisted_entries(), *runtime], level, text, limit)
+
+
+def filter_log_entries(lines: list[dict[str, str]], level: str = "all", text: str = "", limit: int = 350) -> dict[str, Any]:
+    needle = text.strip().casefold()
+    if needle:
+        lines = [line for line in lines if needle in f"{line['source']} {line['message']}".casefold()]
+    counts = {"all": len(lines), "info": 0, "warn": 0, "error": 0, "debug": 0}
+    for line in lines:
+        counts[line["level"]] = counts.get(line["level"], 0) + 1
+    if level and level != "all":
+        lines = [line for line in lines if line["level"] == level]
+    if limit > 0:
+        lines = lines[-limit:]
+    return {"entries": lines, "counts": counts}
 
 
 # ---------------------------------------------------------------- 文件监听 ---
@@ -309,6 +319,7 @@ class Service:
         import config
 
         self.config = config
+        self.demo = None  # ng_demo.DemoState:演示模式下的内存数据
         self._settings_mtime = self._file_mtime(config.USER_SETTINGS_FILE)
         self.logs = LogBook(lambda: self.config.LOG_FILE)
         self.processes = ProcessManager(self.logs, lambda: self.config.DATA_DIR)
@@ -327,6 +338,8 @@ class Service:
             "process.stop": self.process_stop,
             "process.list": lambda _p: {"running": self.processes.running()},
             "logs.query": self.logs_query,
+            "demo.enter": self.demo_enter,
+            "demo.exit": self.demo_exit,
         }
 
     @staticmethod
@@ -370,6 +383,8 @@ class Service:
         handler = self.methods.get(method)
         if handler is None:
             raise RpcError("method_not_found", f"未知方法: {method}")
+        if self.demo is not None and method in DEMO_BLOCKED_METHODS:
+            raise RpcError("demo_mode", DEMO_BLOCKED_MESSAGE)
         self.refresh_config()
         try:
             return handler(params)
@@ -386,9 +401,23 @@ class Service:
             "data_dir": str(self.config.DATA_DIR),
             "platform": platform.system().lower(),
             "running": self.processes.running(),
+            "demo": self.demo is not None,
         }
 
+    def demo_enter(self, _params: dict[str, Any]) -> dict[str, Any]:
+        import ng_demo
+
+        if self.demo is None:
+            self.demo = ng_demo.DemoState()
+        return {"ok": True, "demo": True}
+
+    def demo_exit(self, _params: dict[str, Any]) -> dict[str, Any]:
+        self.demo = None
+        return {"ok": True, "demo": False}
+
     def _conflict_context(self, model=None):
+        if self.demo is not None:
+            return self.demo, self.demo.courses_by_id, self.demo.choosed
         backend = self._backend()
         model = model or backend.CourseModel()
         courses_by_id = {
@@ -411,8 +440,14 @@ class Service:
     def snapshot(self, _params: dict[str, Any]) -> dict[str, Any]:
         import ng_logic
 
+        if self.demo is not None:
+            data = self.demo.snapshot()
+            data["release_mode"] = is_release_mode()
+            data["demo"] = True
+            return data
         data = self._backend().build_snapshot()
         data.pop("logs", None)
+        data["demo"] = False
         courses_by_id = {row["jxb_id"]: row for row in data["courses"]}
         for group in data["groups"]:
             marks = ng_logic.group_conflict_marks(group["priority"], courses_by_id, data["choosed"])
@@ -461,6 +496,16 @@ class Service:
         }
 
     def groups_save(self, params: dict[str, Any]) -> dict[str, Any]:
+        if self.demo is not None:
+            groups = params.get("groups")
+            if not isinstance(groups, dict):
+                raise RpcError("invalid_params", "groups 必须是对象")
+            self.demo.groups = {
+                str(name): {"is_pe": bool(g.get("is_pe")), "priority": [str(i) for i in g.get("priority", []) if i]}
+                for name, g in groups.items() if str(name).strip()
+            }
+            return {"ok": True, "warnings": ["演示模式：方案只在本次演示中生效，不会写入磁盘"],
+                    "duplicates": {}, "unresolved": [], "course_count": len(self.demo.groups)}
         return self._backend().save_groups(params)
 
     def settings_save(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -497,6 +542,9 @@ class Service:
             limit = int(params.get("limit", 350))
         except (TypeError, ValueError):
             limit = 350
+        if self.demo is not None:
+            return filter_log_entries(self.demo.log_entries(), str(params.get("level") or "all"),
+                                      str(params.get("query") or ""), limit)
         return self.logs.query(
             level=str(params.get("level") or "all"),
             text=str(params.get("query") or ""),

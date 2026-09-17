@@ -212,6 +212,15 @@ public sealed class ServiceIntegrationTests : IDisposable
 
             await OnUi(async () => { await store.RunAsync("no-such-task"); return true; });
             Assert.Contains("未知任务", store.Status);
+
+            await OnUi(async () => { await store.EnterDemoAsync(); return true; });
+            Assert.True(store.DemoMode);
+            Assert.Contains(store.Courses, c => c.JxbId.StartsWith("DEMO-"));
+            await OnUi(async () => { await store.RunAsync("monitor"); return true; });
+            Assert.Contains("演示模式", store.Status);
+            await OnUi(async () => { await store.ExitDemoAsync(); return true; });
+            Assert.False(store.DemoMode);
+            Assert.Equal("物理", store.Groups[0].Name);
         }
         finally
         {

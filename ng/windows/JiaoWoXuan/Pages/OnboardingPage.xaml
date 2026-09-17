@@ -24,10 +24,18 @@
                     <TextBlock x:Name="AccountHint" Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
                     <TextBox x:Name="Account" Header="JAccount" />
                     <PasswordBox x:Name="Password" Header="密码" KeyDown="OnPasswordKeyDown" />
-                    <TextBlock Text="本应用面向上海交通大学在校师生，需使用学校统一分配的 JAccount 登录。"
+                    <TextBlock Text="本应用面向上海交通大学在校师生，需使用学校统一分配的 JAccount 登录（jaccount.sjtu.edu.cn）。非交大用户可点击“以演示模式预览”查看示例数据与全部界面。"
                                Style="{StaticResource SecondaryText}" TextWrapping="Wrap" />
-                    <Button x:Name="SaveAccountButton" Content="保存并继续" Style="{StaticResource AccentPillButton}"
-                            HorizontalAlignment="Right" Click="OnSaveAccount" />
+                    <Grid>
+                        <Button x:Name="DemoButton" Click="OnDemo" ToolTipService.ToolTip="无需 JAccount 与校园网，使用离线示例数据体验全部界面">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE7B3;" FontSize="14" />
+                                <TextBlock Text="以演示模式预览" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="SaveAccountButton" Content="保存并继续" Style="{StaticResource AccentPillButton}"
+                                HorizontalAlignment="Right" Click="OnSaveAccount" />
+                    </Grid>
                 </StackPanel>
 
                 <!-- 2. 同步 -->

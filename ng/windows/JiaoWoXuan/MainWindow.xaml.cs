@@ -96,7 +96,7 @@ public sealed partial class MainWindow : Window
                 break;
             case nameof(AppStore.Phase) or nameof(AppStore.Snapshot) or nameof(AppStore.NeedsOnboarding)
                 or nameof(AppStore.Running) or nameof(AppStore.MonitorRunning) or nameof(AppStore.Status)
-                or nameof(AppStore.GroupsDirty) or nameof(AppStore.Failure):
+                or nameof(AppStore.GroupsDirty) or nameof(AppStore.Failure) or nameof(AppStore.DemoMode):
                 Render();
                 break;
         }
@@ -115,6 +115,8 @@ public sealed partial class MainWindow : Window
         OnboardingFrame.Visibility = onboarding ? Visibility.Visible : Visibility.Collapsed;
         if (onboarding && OnboardingFrame.Content is not OnboardingPage) OnboardingFrame.Navigate(typeof(OnboardingPage));
         Nav.Visibility = ready && !onboarding ? Visibility.Visible : Visibility.Collapsed;
+
+        DemoBar.IsOpen = ready && store.DemoMode;
 
         var monitor = store.MonitorRunning;
         var once = store.Running.Contains("once");
@@ -192,6 +194,8 @@ public sealed partial class MainWindow : Window
     void OnRefresh(object sender, RoutedEventArgs e) => _ = store.RefreshAsync();
 
     void OnRestartBackend(object sender, RoutedEventArgs e) => store.RestartBackend();
+
+    void OnExitDemo(object sender, RoutedEventArgs e) => _ = store.ExitDemoAsync();
 
     void ShowAndActivate()
     {

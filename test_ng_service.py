@@ -335,6 +335,33 @@ class ServiceProtocolTests(unittest.TestCase):
         self.assertTrue(site["matches_active"])
         self.wait_for(lambda m: m.get("event") == "state.changed" and "user_settings" in m["data"]["files"])
 
+    def test_demo_mode_serves_sample_data_and_blocks_writes(self):
+        self.wait_for(lambda m: m.get("event") == "ready")
+        self.assertTrue(self.call("demo.enter")["result"]["demo"])
+        snapshot = self.call("snapshot")["result"]
+        self.assertTrue(snapshot["demo"])
+        self.assertTrue(snapshot["onboarding"]["completed"])
+        self.assertGreater(len(snapshot["courses"]), 5)
+        pe = next(g for g in snapshot["groups"] if g["name"] == "体育项目")
+        self.assertEqual(pe["conflict_count"], 1)  # 游泳与已选英语 02 班(周三 3-4 节)冲突
+
+        blocked = self.call("process.start", {"task": "monitor"})["error"]
+        self.assertEqual(blocked["code"], "demo_mode")
+        self.assertEqual(self.call("settings.save", {})["error"]["code"], "demo_mode")
+
+        added = self.call("groups.add_courses", {"priority": ["DEMO-EN-01", "DEMO-EN-02"], "added": ["DEMO-EN-03"]})["result"]
+        self.assertEqual(added["priority"], ["DEMO-EN-01", "DEMO-EN-03", "DEMO-EN-02"])
+        saved = self.call("groups.save", {"groups": {"英语拓展": {"is_pe": False, "priority": added["priority"]}}})["result"]
+        self.assertTrue(saved["ok"])
+        self.assertEqual(len(self.call("snapshot")["result"]["groups"]), 1)
+        self.assertGreater(self.call("logs.query")["result"]["counts"]["all"], 3)
+        self.assertFalse((Path(self.tmp.name) / "terms" / "2026-3" / "state.json").exists())
+
+        self.assertFalse(self.call("demo.exit")["result"]["demo"])
+        real = self.call("snapshot")["result"]
+        self.assertFalse(real["demo"])
+        self.assertEqual(real["groups"][0]["name"], "物理")
+
     def test_stdin_close_exits_cleanly(self):
         self.wait_for(lambda m: m.get("event") == "ready")
         self.proc.stdin.close()

@@ -71,6 +71,9 @@ private struct Workbench: View {
             .safeAreaInset(edge: .bottom) { SidebarMonitorStatus() }
         } detail: {
             detail
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if store.demoMode { DemoBanner() }
+                }
                 .navigationTitle(store.page.title)
                 .navigationSubtitle(subtitle)
                 .toolbar { MonitorToolbar() }
@@ -98,6 +101,30 @@ private struct Workbench: View {
     private var subtitle: String {
         if store.groupsDirty { return "方案有未保存的修改" }
         return store.status
+    }
+}
+
+private struct DemoBanner: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "eye.fill").foregroundStyle(Color.accentColor)
+            Text("演示模式").font(.callout.weight(.semibold))
+            Text("数据均为示例，联网、监控与写入操作已禁用，方案修改只在本次演示中生效")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+            Button("退出演示") { Task { await store.exitDemo() } }
+                .glassButton(prominent: true)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassCard(cornerRadius: 16, tint: .accentColor.opacity(0.15))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 }
 

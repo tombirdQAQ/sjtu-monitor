@@ -134,6 +134,13 @@ struct AppCommands: Commands {
                 .disabled(store.running.contains("ratings-all"))
             Button("读取教务当前学期") { store.run("detect-term") }
                 .disabled(store.running.contains("detect-term"))
+            Divider()
+            if store.demoMode {
+                Button("退出演示模式") { Task { await store.exitDemo() } }
+            } else {
+                Button("演示模式预览") { Task { await store.enterDemo() } }
+                    .disabled(store.phase != .ready || store.monitorRunning)
+            }
             if !store.releaseMode {
                 Divider()
                 Toggle("调试输出", isOn: Binding(get: { store.debug }, set: { store.debug = $0 }))

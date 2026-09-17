@@ -344,6 +344,8 @@ public sealed class Snapshot
     [JsonPropertyName("categories")] public List<string> Categories { get; set; } = [];
     [JsonPropertyName("running")] public List<string> Running { get; set; } = [];
     [JsonPropertyName("release_mode")] public bool ReleaseMode { get; set; }
+    /// 演示模式:示例数据,联网与写入被服务端拒绝。
+    [JsonPropertyName("demo")] public bool Demo { get; set; }
 }
 
 public sealed class SaveGroupsResult

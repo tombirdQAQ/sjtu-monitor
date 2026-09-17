@@ -103,8 +103,18 @@
             </NavigationView.PaneFooter>
 
             <Grid>
-                <Frame x:Name="ContentFrame" />
-                <ProgressBar x:Name="TaskProgress" IsIndeterminate="True" VerticalAlignment="Top" Visibility="Collapsed" />
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <InfoBar x:Name="DemoBar" Severity="Informational" IsClosable="False" IsOpen="False" Margin="24,12,24,0"
+                         Title="演示模式" Message="数据均为示例，联网、监控与写入操作已禁用，方案修改只在本次演示中生效">
+                    <InfoBar.ActionButton>
+                        <Button Content="退出演示" Click="OnExitDemo" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <Frame x:Name="ContentFrame" Grid.Row="1" />
+                <ProgressBar x:Name="TaskProgress" Grid.Row="1" IsIndeterminate="True" VerticalAlignment="Top" Visibility="Collapsed" />
             </Grid>
         </NavigationView>
 

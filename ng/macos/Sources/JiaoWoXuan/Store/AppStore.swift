@@ -95,6 +95,7 @@ final class AppStore {
     var groupsDirty: Bool { groups.map(\.plan) != savedPlans }
     var settingsDirty: Bool { settings != savedSettings }
     var monitorRunning: Bool { running.contains("monitor") }
+    var demoMode: Bool { snapshot?.demo == true }
     var needsOnboarding: Bool { snapshot.map { !$0.onboarding.completed } ?? false }
 
     var courses: [CourseRow] { snapshot?.courses ?? [] }
@@ -435,6 +436,33 @@ final class AppStore {
                 self.status = "方案已保存，但有 \(warnings.count) 条提示"
                 self.notice = Notice(title: "方案已保存", message: warnings.joined(separator: "\n"))
             }
+        }
+    }
+
+    // MARK: - 演示模式
+
+    func enterDemo() async {
+        await perform {
+            _ = try await self.backend().callRaw("demo.enter", [:])
+            self.courseSelection = []
+            self.inspectedCourse = nil
+            self.selectedGroup = nil
+            self.memberSelection = []
+            await self.refresh()
+            self.page = .overview
+            self.status = "演示模式：以下均为示例数据，联网、监控与写入操作已禁用"
+        }
+    }
+
+    func exitDemo() async {
+        await perform {
+            _ = try await self.backend().callRaw("demo.exit", [:])
+            self.courseSelection = []
+            self.inspectedCourse = nil
+            self.selectedGroup = nil
+            self.memberSelection = []
+            await self.refresh()
+            self.status = "已退出演示模式"
         }
     }
 

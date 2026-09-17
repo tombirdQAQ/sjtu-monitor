@@ -77,6 +77,8 @@ public sealed partial class OnboardingPage : Microsoft.UI.Xaml.Controls.Page
 
     void OnBack(object sender, RoutedEventArgs e) => store.OnboardingStep = 1;
 
+    void OnDemo(object sender, RoutedEventArgs e) => _ = store.EnterDemoAsync();
+
     void OnSync(object sender, RoutedEventArgs e) => _ = store.RunAsync("bootstrap", adoptSiteTerm: true);
 
     void OnFinish(object sender, RoutedEventArgs e) => _ = store.FinishOnboardingAsync();

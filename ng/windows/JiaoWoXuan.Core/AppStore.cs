@@ -114,6 +114,7 @@ public sealed class AppStore(Action<Action> dispatch, Func<BackendLaunch>? resol
 
     public bool ReleaseMode => Hello?.ReleaseMode ?? Snapshot?.ReleaseMode ?? false;
     public bool NeedsOnboarding => Snapshot is { Onboarding.Completed: false };
+    public bool DemoMode => Snapshot?.Demo == true;
     public bool GroupsDirty => !Groups.Select(g => g.PlanSignature).SequenceEqual(savedPlans);
     public bool SettingsDirty => Settings != savedSettings;
 
@@ -335,6 +336,7 @@ public sealed class AppStore(Action<Action> dispatch, Func<BackendLaunch>? resol
         Raise(nameof(FilteredCourses));
         Raise(nameof(StateRows));
         Raise(nameof(NeedsOnboarding));
+        Raise(nameof(DemoMode));
         Raise(nameof(SettingsDirty));
         Raise(nameof(ReleaseMode));
     }
@@ -574,6 +576,25 @@ public sealed class AppStore(Action<Action> dispatch, Func<BackendLaunch>? resol
             Status = $"方案已保存，但有 {warnings.Count} 条提示";
             NoticeRaised?.Invoke(new Notice("方案已保存", string.Join("\n", warnings)));
         }
+    });
+
+    // ------------------------------------------------------------ 演示模式
+
+    public Task EnterDemoAsync() => Perform(async () =>
+    {
+        await Call<System.Text.Json.Nodes.JsonObject>("demo.enter");
+        SelectedGroup = null;
+        await RefreshAsync();
+        Page = Page.Overview;
+        Status = "演示模式：以下均为示例数据，联网、监控与写入操作已禁用";
+    });
+
+    public Task ExitDemoAsync() => Perform(async () =>
+    {
+        await Call<System.Text.Json.Nodes.JsonObject>("demo.exit");
+        SelectedGroup = null;
+        await RefreshAsync();
+        Status = "已退出演示模式";
     });
 
     // ------------------------------------------------------------ 设置与引导
